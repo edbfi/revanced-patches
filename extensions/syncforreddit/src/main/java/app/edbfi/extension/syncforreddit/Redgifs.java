@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.TreeMap;
 import org.json.JSONObject;
 
 /**
@@ -92,26 +91,18 @@ public final class Redgifs {
         return session;
     }
 
-    // Redgifs gets the system's own User-Agent, never the one the app sends to Reddit.
     private static Map<String, String> headers(String bearer) {
         Map<String, String> headers = new HashMap<>();
-        String agent = System.getProperty("http.agent");
-        headers.put("User-Agent", agent == null || agent.isEmpty() ? "Dalvik/2.1.0 (Linux; Android)" : agent);
+        headers.put("User-Agent", Http.systemUserAgent());
         if (bearer != null) headers.put("Authorization", "Bearer " + bearer);
         return headers;
     }
 
     private static NetworkResponse json(JSONObject body) {
-        return reply(200, body.toString().getBytes(StandardCharsets.UTF_8));
+        return VolleyHook.json(200, body.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private static NetworkResponse failure() {
-        return reply(502, new byte[0]);
-    }
-
-    private static NetworkResponse reply(int status, byte[] body) {
-        Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        headers.put("Content-Type", "application/json");
-        return VolleyHook.response(new Http.Reply(status, body, headers));
+        return VolleyHook.json(502, new byte[0]);
     }
 }

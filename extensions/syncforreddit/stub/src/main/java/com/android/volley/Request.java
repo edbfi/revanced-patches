@@ -17,6 +17,10 @@ public abstract class Request<T> {
         throw new UnsupportedOperationException("stub");
     }
 
+    public String getBodyContentType() {
+        throw new UnsupportedOperationException("stub");
+    }
+
     public boolean isCanceled() {
         throw new UnsupportedOperationException("stub");
     }

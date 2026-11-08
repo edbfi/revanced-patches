@@ -40,12 +40,16 @@ Tested on `com.laurencedawson.reddit_sync` `v23.06.30-13:39`.
 | Fix post thumbnails | Fixes post thumbnails not loading. |
 | Fix video downloads | Fixes downloaded Reddit videos having only audio. |
 | Fix View more comments | Fixes "View more" not loading further comments. |
+| Fix galleries | Fixes Reddit galleries failing to open. |
+| Fix Imgur | Fixes Imgur albums failing to open and Imgur uploads failing. |
 | Use /user/ endpoint (off by default) | Requests user profiles from /user/ instead of /u/. Not needed today: Reddit redirects /u/ to /user/, and the app follows the redirect. |
 
 Spoof client defaults to [RedReader](https://github.com/QuantumBadger/RedReader)'s client. If Reddit stops accepting
 it, set all three options to another "installed app" client: `OAuth client ID`, `Redirect URI` (the one registered
 for that ID) and `User-Agent` (the one that app sends). Then remove your accounts in Sync and add them again: their
 tokens belong to the old client.
+
+Fix Imgur defaults to RedReader's Imgur client ID. If Imgur stops accepting it, set `Imgur client ID` to another.
 
 ## Contribute
 
