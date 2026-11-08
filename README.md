@@ -24,6 +24,21 @@ java -jar revanced-cli.jar patch \
 
 The key's fingerprint is `7B40 A51F C15C 376F 09D1  6979 893C 92F2 3E64 7FC8`.
 
+## Patches
+
+### Sync for Reddit
+
+Tested on `com.laurencedawson.reddit_sync` `v23.06.30-13:39`.
+
+| Patch | What it does |
+| --- | --- |
+| Spoof client | Logs in and browses with another app's Reddit OAuth client; Reddit no longer accepts Sync's. |
+
+Spoof client defaults to [RedReader](https://github.com/QuantumBadger/RedReader)'s client. If Reddit stops accepting
+it, set all three options to another "installed app" client: `OAuth client ID`, `Redirect URI` (the one registered
+for that ID) and `User-Agent` (the one that app sends). Then remove your accounts in Sync and add them again: their
+tokens belong to the old client.
+
 ## Contribute
 
 See [AGENTS.md](AGENTS.md).
