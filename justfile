@@ -82,6 +82,7 @@ device:
 device-reset:
     #!/usr/bin/env bash
     set -euo pipefail
+    docker info >/dev/null # fail loudly if docker is unreachable, rather than mistake that for "no device"
     if docker container inspect revanced-device >/dev/null 2>&1; then docker rm -f revanced-device >/dev/null; fi
     adb disconnect {{ device_serial }} >/dev/null 2>&1 || true
     data=${XDG_DATA_HOME:-$HOME/.local/share}/revanced-device
