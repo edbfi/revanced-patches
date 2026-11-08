@@ -50,8 +50,8 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 - It renders in software, and playing a video crashes its SurfaceFlinger
   ([redroid-doc#920](https://github.com/remote-android/redroid-doc/issues/920)): turn autoplay off and check
   videos through downloaded files and logs.
-- Reddit's login page rejects Redroid's WebView (Chromium 128), so `just device` installs a pinned Chromium WebView
-  over it, re-signed with AOSP's public test key; it needs `ANDROID_HOME` for `apksigner`.
+- Reddit's login page rejects Redroid's WebView (Chromium 128), so on arm64 `just device` installs a pinned Chromium
+  WebView over it, re-signed with AOSP's public test key; the first run needs `ANDROID_HOME` for `apksigner`.
 - Agents never type account credentials. The owner logs in through scrcpy; the agent then keeps the login by
   updating with `adb install -r`, never uninstalling.
 
