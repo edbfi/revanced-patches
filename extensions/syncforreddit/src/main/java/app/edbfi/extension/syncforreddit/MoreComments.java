@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -107,7 +108,7 @@ public final class MoreComments {
                 throw new IllegalArgumentException("Unexpected request body: " + form);
             }
             Source reddit = new Reddit(link.substring(3), sort(form.get("sort")), request.getHeaders(), request);
-            JSONArray things = things(link, ids, reddit, pool());
+            JSONArray things = things(link, ids, reddit, pool(), ANSWER_DEADLINE_MS);
             JSONObject body = new JSONObject().put("json", new JSONObject().put("errors", new JSONArray())
                     .put("data", new JSONObject().put("things", things)));
             return reply(200, body.toString().getBytes(StandardCharsets.UTF_8));
@@ -127,11 +128,12 @@ public final class MoreComments {
      * The things to answer with, in the requested order. The first comment Reddit still has tells whose replies they
      * are; if they are a comment's, one page of that comment usually holds them all. The others are fetched one by
      * one, at most {@link #BATCH} pages in all, fewer when Reddit's rate limit runs low, and none started after the
-     * answer's deadline; the rest come back as a "more" thing. Comments Reddit no longer has are left out.
+     * answer's deadline; the rest come back as a "more" thing. Comments Reddit no longer has are left out. Pages are
+     * fetched on the pool, so the calling thread waits no longer than {@code timeoutMs}.
      */
-    static JSONArray things(String link, List<String> ids, final Source source, ExecutorService pool)
+    static JSONArray things(String link, List<String> ids, final Source source, ExecutorService pool, long timeoutMs)
             throws Exception {
-        long deadline = System.currentTimeMillis() + ANSWER_DEADLINE_MS;
+        long deadline = System.currentTimeMillis() + timeoutMs;
         if (source.budget() <= 0) throw new IOException("Reddit's rate limit is used up");
         int limit = Math.min(BATCH, source.budget());
         Map<String, JSONObject> found = new HashMap<>();
@@ -142,7 +144,7 @@ public final class MoreComments {
         for (String id : ids) {
             if (sent >= limit || System.currentTimeMillis() >= deadline) break;
             checkCanceled(source);
-            JSONObject comment = source.comment(id, false);
+            JSONObject comment = fetch(source, id, false, pool, deadline);
             sent++;
             // Each page tells how much of the rate limit is left.
             limit = Math.min(limit, sent + Math.max(0, source.budget()));
@@ -159,7 +161,7 @@ public final class MoreComments {
             checkCanceled(source);
             sent++;
             try {
-                JSONObject page = source.comment(parent.substring(3), true);
+                JSONObject page = fetch(source, parent.substring(3), true, pool, deadline);
                 if (page != null) {
                     Set<String> wanted = new HashSet<>(ids);
                     for (JSONObject reply : replies(page)) {
@@ -171,6 +173,7 @@ public final class MoreComments {
             } catch (Exception error) {
                 Log.w(VolleyHook.TAG, "Parent comment failed, loading replies one by one", error);
             }
+            limit = Math.min(limit, sent + Math.max(0, source.budget()));
         }
 
         List<String> rest = new ArrayList<>();
@@ -207,16 +210,38 @@ public final class MoreComments {
 
         JSONArray things = new JSONArray();
         Set<String> added = new HashSet<>();
-        List<String> left = new ArrayList<>();
         for (String id : ids) {
             JSONObject comment = found.get(id);
             if (comment != null) flatten(comment, things, added);
-            else if (!gone.contains(id) && !added.contains(id)) left.add(id);
+        }
+        // Not for the next tap: comments Reddit no longer has, and ones already in the list or in one of its rows.
+        List<String> left = new ArrayList<>();
+        for (String id : ids) {
+            if (!found.containsKey(id) && !gone.contains(id) && !added.contains(id) && !added.contains("more_" + id)) {
+                left.add(id);
+            }
         }
         // With no comment found, the parent is unknown; the post works as well, as the app takes the new row's level
         // from the tapped one when its parent isn't in the list, and the next tap reads the parent again.
         if (!left.isEmpty()) things.put(more(left, parent != null ? parent : link));
         return things;
+    }
+
+    /** One page, waited for no later than the deadline; a page still loading then is canceled. */
+    private static JSONObject fetch(final Source source, final String id, final boolean parent, ExecutorService pool,
+            long deadline) throws Exception {
+        long timeLeft = deadline - System.currentTimeMillis();
+        if (timeLeft <= 0) throw new TimeoutException("No time left for comment " + id);
+        Future<JSONObject> page = pool.submit(() -> source.comment(id, parent));
+        try {
+            return page.get(timeLeft, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException error) {
+            page.cancel(true);
+            throw error;
+        } catch (ExecutionException error) {
+            Throwable cause = error.getCause();
+            throw cause instanceof Exception ? (Exception) cause : error;
+        }
     }
 
     private static void checkCanceled(Source source) {

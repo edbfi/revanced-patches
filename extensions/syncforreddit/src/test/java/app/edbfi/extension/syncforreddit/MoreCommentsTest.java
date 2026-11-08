@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -30,6 +31,7 @@ import org.junit.Test;
 public class MoreCommentsTest {
     private static final String LINK = "t3_post";
     private static final ExecutorService POOL = Executors.newFixedThreadPool(4);
+    private static final long TIMEOUT = 10_000;
 
     @AfterClass
     public static void stopPool() {
@@ -44,7 +46,11 @@ public class MoreCommentsTest {
         volatile int budget = MoreComments.BATCH;
         // The budget Reddit reports once the first page is back, or -1 to keep it.
         volatile int budgetAfterFirst = -1;
+        // The budget Reddit reports once a parent's page is back, or -1 to keep it.
+        volatile int budgetAfterParent = -1;
         volatile boolean canceled;
+        // How long every page takes.
+        volatile long delayMs;
 
         Pages with(JSONObject... things) throws JSONException {
             for (JSONObject thing : things) {
@@ -63,6 +69,8 @@ public class MoreCommentsTest {
         public JSONObject comment(String id, boolean parent) throws Exception {
             requested.add(id + (parent ? " (parent)" : ""));
             if (budgetAfterFirst >= 0) budget = budgetAfterFirst;
+            if (parent && budgetAfterParent >= 0) budget = budgetAfterParent;
+            if (delayMs > 0) Thread.sleep(delayMs);
             if (failing.contains(id)) throw new IOException("Reddit returned 500");
             JSONObject comment = comments.get(id);
             // Fresh JSON for every page, as from the network.
@@ -132,7 +140,7 @@ public class MoreCommentsTest {
                 comment("a", "t1_p", comment("a1", "t1_a", comment("a2", "t1_a1"))),
                 comment("b", "t1_p", more)));
 
-        JSONArray things = MoreComments.things(LINK, Arrays.asList("a", "b"), pages, POOL);
+        JSONArray things = MoreComments.things(LINK, Arrays.asList("a", "b"), pages, POOL, TIMEOUT);
 
         assertEquals(Arrays.asList("a under t1_p", "a1 under t1_a", "a2 under t1_a1", "b under t1_p",
                 "more x under t1_b"), rows(things));
@@ -144,7 +152,7 @@ public class MoreCommentsTest {
         Pages pages = new Pages();
         for (String id : ids(25)) pages.with(comment(id, LINK, comment(id + "r", "t1_" + id)));
 
-        List<String> rows = rows(MoreComments.things(LINK, ids(25), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, ids(25), pages, POOL, TIMEOUT));
 
         assertEquals(MoreComments.BATCH, pages.requested.size());
         assertEquals(2 * MoreComments.BATCH + 1, rows.size());
@@ -158,7 +166,7 @@ public class MoreCommentsTest {
         Pages pages = new Pages().with(comment("c1", LINK), comment("c3", LINK));
         pages.failing.add("c2");
 
-        List<String> rows = rows(MoreComments.things(LINK, ids(4), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, ids(4), pages, POOL, TIMEOUT));
 
         assertEquals(Arrays.asList("c1 under t3_post", "c3 under t3_post", "more c2 under t3_post"), rows);
     }
@@ -167,7 +175,7 @@ public class MoreCommentsTest {
     public void repliesMissingFromTheParentsPageAreFetchedOneByOne() throws Exception {
         Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p")), comment("b", "t1_p"));
 
-        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("a", "b"), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("a", "b"), pages, POOL, TIMEOUT));
 
         assertEquals(Arrays.asList("a under t1_p", "b under t1_p"), rows);
         assertEquals(Arrays.asList("a", "p (parent)", "b"), pages.requested);
@@ -179,7 +187,7 @@ public class MoreCommentsTest {
         for (String id : ids(5)) pages.with(comment(id, LINK));
         pages.budget = 2;
 
-        List<String> rows = rows(MoreComments.things(LINK, ids(5), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, ids(5), pages, POOL, TIMEOUT));
 
         assertEquals(Arrays.asList("c0 under t3_post", "c1 under t3_post", "more c2,c3,c4 under t3_post"), rows);
     }
@@ -190,7 +198,7 @@ public class MoreCommentsTest {
         for (String id : ids(5)) pages.with(comment(id, LINK));
         pages.budgetAfterFirst = 1;
 
-        List<String> rows = rows(MoreComments.things(LINK, ids(5), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, ids(5), pages, POOL, TIMEOUT));
 
         assertEquals(Arrays.asList("c0 under t3_post", "c1 under t3_post", "more c2,c3,c4 under t3_post"), rows);
     }
@@ -200,7 +208,7 @@ public class MoreCommentsTest {
         Pages pages = new Pages().with(comment("c0", LINK));
         pages.budget = 0;
         try {
-            MoreComments.things(LINK, ids(1), pages, POOL);
+            MoreComments.things(LINK, ids(1), pages, POOL, TIMEOUT);
             fail();
         } catch (IOException expected) {
             assertTrue(pages.requested.isEmpty());
@@ -212,7 +220,7 @@ public class MoreCommentsTest {
         Pages pages = new Pages().with(comment("c0", LINK));
         pages.canceled = true;
         try {
-            MoreComments.things(LINK, ids(1), pages, POOL);
+            MoreComments.things(LINK, ids(1), pages, POOL, TIMEOUT);
             fail();
         } catch (CancellationException expected) {
             assertTrue(pages.requested.isEmpty());
@@ -223,7 +231,7 @@ public class MoreCommentsTest {
     public void theParentsPageIsSkippedWhenEveryCommentIsFound() throws Exception {
         Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p")));
 
-        assertEquals(Arrays.asList("a under t1_p"), rows(MoreComments.things(LINK, Arrays.asList("a"), pages, POOL)));
+        assertEquals(Arrays.asList("a under t1_p"), rows(MoreComments.things(LINK, Arrays.asList("a"), pages, POOL, TIMEOUT)));
         assertEquals(Arrays.asList("a"), pages.requested);
     }
 
@@ -232,7 +240,7 @@ public class MoreCommentsTest {
         Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p"), comment("b", "t1_p")));
         pages.failing.add("p");
 
-        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("a", "b"), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("a", "b"), pages, POOL, TIMEOUT));
 
         assertEquals(Arrays.asList("a under t1_p", "b under t1_p"), rows);
         assertEquals(Arrays.asList("a", "p (parent)", "b"), pages.requested);
@@ -242,7 +250,7 @@ public class MoreCommentsTest {
     public void aGoneFirstCommentLetsTheNextOneTellTheParent() throws Exception {
         Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p"), comment("b", "t1_p")));
 
-        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("gone", "a", "b"), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("gone", "a", "b"), pages, POOL, TIMEOUT));
 
         assertEquals(Arrays.asList("a under t1_p", "b under t1_p"), rows);
         assertEquals(Arrays.asList("gone", "a", "p (parent)"), pages.requested);
@@ -252,7 +260,7 @@ public class MoreCommentsTest {
     public void aCommentAlreadyInAnotherSubtreeIsAddedOnce() throws Exception {
         Pages pages = new Pages().with(comment("x", LINK, comment("y", "t1_x")));
 
-        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("x", "y"), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("x", "y"), pages, POOL, TIMEOUT));
 
         assertEquals(Arrays.asList("x under t3_post", "y under t1_x"), rows);
     }
@@ -263,7 +271,7 @@ public class MoreCommentsTest {
                 comment("x2", "t1_x", continueThread("t1_x2"))));
 
         assertEquals(Arrays.asList("x under t3_post", "x1 under t1_x", "more  under t1_x1", "x2 under t1_x",
-                "more  under t1_x2"), rows(MoreComments.things(LINK, Arrays.asList("x"), pages, POOL)));
+                "more  under t1_x2"), rows(MoreComments.things(LINK, Arrays.asList("x"), pages, POOL, TIMEOUT)));
     }
 
     @Test
@@ -271,7 +279,7 @@ public class MoreCommentsTest {
         Pages pages = new Pages();
         pages.budgetAfterFirst = 0;
 
-        List<String> rows = rows(MoreComments.things(LINK, ids(5), pages, POOL));
+        List<String> rows = rows(MoreComments.things(LINK, ids(5), pages, POOL, TIMEOUT));
 
         assertEquals(Arrays.asList("c0"), pages.requested);
         assertEquals(Arrays.asList("more c1,c2,c3,c4 under t3_post"), rows);
@@ -283,7 +291,62 @@ public class MoreCommentsTest {
         pages.budget = 1;
 
         assertEquals(Arrays.asList("x under t3_post", "y under t1_x"),
-                rows(MoreComments.things(LINK, Arrays.asList("x", "y"), pages, POOL)));
+                rows(MoreComments.things(LINK, Arrays.asList("x", "y"), pages, POOL, TIMEOUT)));
+    }
+
+    @Test
+    public void theBudgetIsReadAgainAfterTheParentsPage() throws Exception {
+        Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p")), comment("b", "t1_p"),
+                comment("c", "t1_p"));
+        pages.budgetAfterParent = 0;
+
+        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("a", "b", "c"), pages, POOL, TIMEOUT));
+
+        assertEquals(Arrays.asList("a", "p (parent)"), pages.requested);
+        assertEquals(Arrays.asList("a under t1_p", "more b,c under t1_p"), rows);
+    }
+
+    @Test
+    public void pagesNotBackByTheDeadlineAreLeftForLater() throws Exception {
+        Pages pages = new Pages();
+        for (String id : ids(3)) pages.with(comment(id, LINK));
+        pages.delayMs = 300;
+
+        List<String> rows = rows(MoreComments.things(LINK, ids(3), pages, POOL, 450));
+
+        assertEquals(Arrays.asList("c0 under t3_post", "more c1,c2 under t3_post"), rows);
+    }
+
+    @Test(expected = TimeoutException.class)
+    public void theCallerWaitsNoLongerThanTheDeadline() throws Exception {
+        Pages pages = new Pages().with(comment("c0", LINK));
+        pages.delayMs = 2_000;
+        long start = System.currentTimeMillis();
+        try {
+            MoreComments.things(LINK, ids(1), pages, POOL, 200);
+        } finally {
+            assertTrue(System.currentTimeMillis() - start < 1_000);
+        }
+    }
+
+    @Test
+    public void aReplyListedBeforeItsParentIsAddedOnce() throws Exception {
+        Pages pages = new Pages().with(comment("a", LINK), comment("x", LINK, comment("y", "t1_x")));
+        pages.failing.add("y");
+
+        assertEquals(Arrays.asList("a under t3_post", "x under t3_post", "y under t1_x"),
+                rows(MoreComments.things(LINK, Arrays.asList("a", "y", "x"), pages, POOL, TIMEOUT)));
+    }
+
+    @Test
+    public void anIdInANestedMoreRowIsNotLeftForLater() throws Exception {
+        JSONObject nested = new JSONObject().put("kind", "more").put("data", new JSONObject().put("id", "y")
+                .put("parent_id", "t1_x").put("children", new JSONArray().put("y").put("z")));
+        Pages pages = new Pages().with(comment("x", LINK, nested));
+        pages.budget = 1;
+
+        assertEquals(Arrays.asList("x under t3_post", "more y,z under t1_x"),
+                rows(MoreComments.things(LINK, Arrays.asList("x", "y"), pages, POOL, TIMEOUT)));
     }
 
     @Test
@@ -292,19 +355,19 @@ public class MoreCommentsTest {
         Pages pages = new Pages().with(comment("x", LINK, comment("y", "t1_x"), other));
 
         assertEquals(Arrays.asList("x under t3_post", "y under t1_x"),
-                rows(MoreComments.things(LINK, Arrays.asList("x"), pages, POOL)));
+                rows(MoreComments.things(LINK, Arrays.asList("x"), pages, POOL, TIMEOUT)));
     }
 
     @Test
     public void allCommentsGoneGivesNoThings() throws Exception {
-        assertEquals(0, MoreComments.things(LINK, ids(3), new Pages(), POOL).length());
+        assertEquals(0, MoreComments.things(LINK, ids(3), new Pages(), POOL, TIMEOUT).length());
     }
 
     @Test(expected = IOException.class)
     public void theFirstFailureFailsTheAnswer() throws Exception {
         Pages pages = new Pages().with(comment("c1", LINK));
         pages.failing.add("c0");
-        MoreComments.things(LINK, ids(2), pages, POOL);
+        MoreComments.things(LINK, ids(2), pages, POOL, TIMEOUT);
     }
 
     @Test
