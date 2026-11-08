@@ -9,8 +9,9 @@ jadx_sha256 := "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75
 default:
     @just --list
 
-# Lint, test and build the bundle, as CI does
+# Run what CI runs: the prek hooks, then lint, test and build the bundle
 check:
+    prek run --all-files --hook-stage manual
     ./gradlew check :patches:buildAndroid
 
 # Build patches/build/libs/patches-<version>.rvp
@@ -25,9 +26,10 @@ patch apk *args: build
     just _fetch "https://github.com/ReVanced/revanced-cli/releases/download/v{{ cli_version }}/revanced-cli-{{ cli_version }}-all.jar" "$cli" {{ cli_sha256 }}
     # The aapt2 inside the CLI is x86_64-only: on arm64 Linux it runs under qemu-user-binfmt.
     if [[ "$(uname -sm)" == "Linux aarch64" ]]; then export QEMU_LD_PREFIX=/usr/x86_64-linux-gnu; fi
+    version=$(sed -n 's/^version=//p' gradle.properties)
     mkdir -p tmp/out
     # -b: a local build is unsigned, so skip signature verification.
-    java -jar "$cli" patch -b -p patches/build/libs/patches-*.rvp -o "tmp/out/$(basename "{{ apk }}" .apk)-patched.apk" {{ args }} "{{ apk }}"
+    java -jar "$cli" patch -b -p "patches/build/libs/patches-$version.rvp" -o "tmp/out/$(basename "{{ apk }}" .apk)-patched.apk" {{ args }} "{{ apk }}"
 
 # Install rea into the main checkout (shared by worktrees), vendor its skill and check Ghidra and JADX
 setup-rea:

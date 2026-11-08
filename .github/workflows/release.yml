@@ -9,8 +9,8 @@
 #            the attestation in, signs the .rvp with GPG, submits it to VirusTotal, attaches the
 #            assets, and attaches patches-bundle.json last: ReVanced Manager reads
 #            releases/latest/download/patches-bundle.json.
-# A failed publish is retried with "Re-run failed jobs": it reuses the built artifacts and
-# replaces the assets and the report block.
+# A failed job is retried with "Re-run failed jobs": later jobs reuse the earlier jobs' artifacts,
+# and publish replaces the assets and the report block.
 name: Release
 on:
   release:
@@ -89,7 +89,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions: { contents: read, packages: read }
+    # Artifact names carry the attempt that made them; "Re-run failed jobs" keeps earlier jobs' outputs.
     outputs:
+      artifact: ${{ steps.check.outputs.artifact }}
       sha256: ${{ steps.check.outputs.sha256 }}
     env:
       VERSION: ${{ needs.verify.outputs.version }}
@@ -115,10 +117,10 @@ jobs:
           # ReVanced Manager rejects a bundle without dex code.
           unzip -l "$rvp" | grep -q ' classes.dex$' || { echo "::error::$rvp holds no classes.dex"; exit 1; }
           mkdir candidate && cp "$rvp" candidate/
-          echo "sha256=$(sha256sum "$rvp" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          { echo "artifact=rvp-$GITHUB_RUN_ATTEMPT"; echo "sha256=$(sha256sum "$rvp" | cut -d' ' -f1)"; } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: rvp-${{ github.run_attempt }}
+          name: ${{ steps.check.outputs.artifact }}
           path: candidate/
           retention-days: 7
           if-no-files-found: error
@@ -128,12 +130,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions: { contents: read, id-token: write, attestations: write }
+    outputs:
+      artifact: ${{ steps.name.outputs.artifact }}
     env:
       VERSION: ${{ needs.verify.outputs.version }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: rvp-${{ github.run_attempt }}
+          name: ${{ needs.build.outputs.artifact }}
           path: ${{ runner.temp }}/rvp
       - name: Check the bundle
         env:
@@ -146,15 +150,17 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/rvp/patches-${{ needs.verify.outputs.version }}.rvp
-      - env:
+      - id: name
+        env:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: |
           set -euo pipefail
           mkdir attestation
           cp "$BUNDLE" "attestation/patches-$VERSION.rvp.sigstore.json"
+          echo "artifact=attestation-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: attestation-${{ github.run_attempt }}
+          name: ${{ steps.name.outputs.artifact }}
           path: attestation/
           retention-days: 7
           if-no-files-found: error
@@ -173,9 +179,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA256: ${{ needs.build.outputs.sha256 }}
+          RVP_ARTIFACT: ${{ needs.build.outputs.artifact }}
+          ATTESTATION_ARTIFACT: ${{ needs.attest.outputs.artifact }}
         run: |
           set -euo pipefail
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]] ||
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ &&
+            "$RVP_ARTIFACT" =~ ^rvp-[0-9]+$ && "$ATTESTATION_ARTIFACT" =~ ^attestation-[0-9]+$ ]] ||
             { echo "::error::Malformed job outputs"; exit 1; }
           # The tag must not have moved since verify.
           tagged="$(gh api "repos/$GH_REPO/commits/refs/tags/$TAG" --jq .sha)"
@@ -187,13 +196,13 @@ jobs:
             gh run download "$GITHUB_RUN_ID" -n "$artifact" -D "$dir"
             mapfile -d '' entries < <(find "$dir" -mindepth 1 -print0)
             if [[ ${#entries[@]} -ne 1 || "${entries[0]}" != "$dir/$name" || -L "$dir/$name" || ! -f "$dir/$name" ]]; then
-              echo "::error::Artifact $artifact must hold exactly one regular file, $name"
+              echo "::error::Artifact $artifact must hold exactly one regular file, $name" >&2
               exit 1
             fi
             echo "$dir/$name"
           }
-          rvp="$(intake "rvp-$GITHUB_RUN_ATTEMPT" "patches-$VERSION.rvp")"
-          sigstore="$(intake "attestation-$GITHUB_RUN_ATTEMPT" "patches-$VERSION.rvp.sigstore.json")"
+          rvp="$(intake "$RVP_ARTIFACT" "patches-$VERSION.rvp")"
+          sigstore="$(intake "$ATTESTATION_ARTIFACT" "patches-$VERSION.rvp.sigstore.json")"
           [[ "$(head -c 2 "$rvp")" == PK ]] || { echo "::error::The bundle is not a zip"; exit 1; }
           actual="$(sha256sum "$rvp" | cut -d' ' -f1)"
           [[ "$actual" == "$EXPECTED_SHA256" ]] || { echo "::error::sha256 $actual, build reported $EXPECTED_SHA256"; exit 1; }
@@ -237,7 +246,8 @@ jobs:
           gh release view "$TAG" --json body > "$RUNNER_TEMP/release.json"
           bash "$RUNNER_TEMP/release-virustotal.sh" notes "$RUNNER_TEMP/release.json" "$RUNNER_TEMP/virustotal.md" "$RUNNER_TEMP/notes.md"
           gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
-      # Last, so Manager never sees a release whose bundle isn't attached yet.
+      # Last, so the feed never names assets that aren't attached. Until this step, latest/download/
+      # patches-bundle.json is a 404: GitHub marks the release latest when it is published.
       - name: Attach patches-bundle.json for ReVanced Manager
         env:
           GH_TOKEN: ${{ github.token }}

@@ -21,9 +21,14 @@ class PatchMetadataTest {
     }
 
     @Test
-    fun `every patch declares the apps it is compatible with`() {
-        val missing = patches.filter { it.compatiblePackages.isNullOrEmpty() }.map { it.name }
-        assertTrue(missing.isEmpty(), "Patches without compatibleWith: $missing")
+    fun `every patch declares the app versions it was tested on`() {
+        val missing =
+            patches
+                .filter { patch ->
+                    patch.compatiblePackages.isNullOrEmpty() ||
+                        patch.compatiblePackages!!.any { (_, versions) -> versions.isNullOrEmpty() }
+                }.map { it.name }
+        assertTrue(missing.isEmpty(), "Patches without compatibleWith packages and versions: $missing")
     }
 
     @Test

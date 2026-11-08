@@ -32,7 +32,7 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 
 ## Commands
 
-- `just check` runs what CI runs; `just build` builds the bundle; `just patch <apk>` applies it to an APK with
+- `just check` runs what CI runs, prek hooks included; `just build` builds the bundle; `just patch <apk>` applies it to an APK with
   the pinned revanced-cli, into `tmp/out/`.
 - Gradle needs `githubPackagesUsername` and `githubPackagesPassword` (a classic PAT with only `read:packages`)
   in `~/.gradle/gradle.properties`. Its daemon runs on JDK 25 (`gradle/gradle-daemon-jvm.properties`); point
