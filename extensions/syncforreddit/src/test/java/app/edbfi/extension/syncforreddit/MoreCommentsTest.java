@@ -345,7 +345,9 @@ public class MoreCommentsTest {
         });
         pages.parentDelayMs = 2_000;
         caller.start();
-        while (!pages.requested.contains("p (parent)")) Thread.sleep(10);
+        long until = System.currentTimeMillis() + 5_000;
+        while (!pages.requested.contains("p (parent)") && System.currentTimeMillis() < until) Thread.sleep(10);
+        assertTrue(pages.requested.contains("p (parent)"));
         caller.interrupt();
         caller.join(1_000);
 
@@ -414,6 +416,42 @@ public class MoreCommentsTest {
         assertEquals(Arrays.asList("abc", "def", "ghi"), MoreComments.ids("abc,,def,abc,../x,DEF,Ghi"));
         assertNull(MoreComments.sort("suggested"));
         assertNull(MoreComments.sort("top&limit=1"));
+    }
+
+    @Test
+    public void readsRedditsRateLimitHeaders() {
+        MoreComments.RateLimit reading = MoreComments.rateLimit("299.0", "120", 1_000);
+        assertEquals(299, reading.remaining);
+        assertEquals(121_000, reading.windowEnd);
+        assertNull(MoreComments.rateLimit(null, "120", 1_000));
+        assertNull(MoreComments.rateLimit("299", null, 1_000));
+        assertNull(MoreComments.rateLimit("many", "120", 1_000));
+    }
+
+    @Test
+    public void theBudgetKeepsTheReserveUntilTheWindowEnds() {
+        MoreComments.RateLimit reading = MoreComments.rateLimit("25", "60", 0);
+        assertEquals(MoreComments.BATCH, MoreComments.budget(null, 0));
+        assertEquals(5, MoreComments.budget(reading, 59_999));
+        assertEquals(-5, MoreComments.budget(MoreComments.rateLimit("15", "60", 0), 1_000));
+        assertEquals(MoreComments.BATCH, MoreComments.budget(reading, 60_000));
+    }
+
+    @Test
+    public void asksForPagesAsTheAppDoes() {
+        assertEquals("https://oauth.reddit.com/comments/post/_/abc.json?always_show_media=1&profile_img=true&limit=50",
+                MoreComments.pageUrl("post", "abc", false, null));
+        assertEquals("https://oauth.reddit.com/comments/post/_/p.json?always_show_media=1&profile_img=true&limit=500"
+                + "&sort=top", MoreComments.pageUrl("post", "p", true, "top"));
+    }
+
+    @Test
+    public void answersInTheEndpointsShape() throws Exception {
+        JSONArray things = new JSONArray().put(comment("a", LINK));
+        JSONObject body = new JSONObject(MoreComments.envelope(things).toString());
+        assertEquals("a", body.getJSONObject("json").getJSONObject("data").getJSONArray("things")
+                .getJSONObject(0).getJSONObject("data").getString("id"));
+        assertEquals(0, body.getJSONObject("json").getJSONArray("errors").length());
     }
 
     @Test

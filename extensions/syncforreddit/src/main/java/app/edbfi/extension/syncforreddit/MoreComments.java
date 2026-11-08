@@ -43,8 +43,9 @@ public final class MoreComments {
     private static final String QUERY = "?always_show_media=1&profile_img=true";
     /** Most comment pages fetched for one tap; the comments left over come back as a new "View more" row. */
     static final int BATCH = 20;
-    // Comment pages read the parent's replies up to the app's own thread limit, a single comment's up to this.
+    // A parent's page reads its replies up to the app's own thread limit.
     private static final int PARENT_LIMIT = 500;
+    // A single comment's page reads its replies up to this.
     private static final int COMMENT_LIMIT = 50;
     // Requests left in Reddit's rate-limit window that are kept for the app's own requests.
     private static final int RESERVE = 20;
@@ -58,7 +59,7 @@ public final class MoreComments {
     private static volatile RateLimit rateLimit;
 
     /** Reddit's X-Ratelimit-Remaining and the time its window ends. */
-    private static final class RateLimit {
+    static final class RateLimit {
         final int remaining;
         final long windowEnd;
 
@@ -95,8 +96,8 @@ public final class MoreComments {
     }
 
     /**
-     * Never returns null: the app's own request would only get Reddit's 403. A failure becomes an error response,
-     * after which the app leaves the "View more" row as it was.
+     * Never returns null: the app's own request would only get Reddit's 403. A failure becomes an error response with
+     * an empty body, which the app's parser rejects before it changes the list, so the "View more" row stays.
      */
     static NetworkResponse answer(Request<?> request) {
         try {
@@ -109,9 +110,7 @@ public final class MoreComments {
             }
             Source reddit = new Reddit(link.substring(3), sort(form.get("sort")), request.getHeaders(), request);
             JSONArray things = things(link, ids, reddit, pool(), ANSWER_DEADLINE_MS);
-            JSONObject body = new JSONObject().put("json", new JSONObject().put("errors", new JSONArray())
-                    .put("data", new JSONObject().put("things", things)));
-            return reply(200, body.toString().getBytes(StandardCharsets.UTF_8));
+            return reply(200, envelope(things).toString().getBytes(StandardCharsets.UTF_8));
         } catch (InterruptedException error) {
             // Volley stops its network threads this way.
             Thread.currentThread().interrupt();
@@ -124,10 +123,38 @@ public final class MoreComments {
         }
     }
 
+    /** The endpoint's own response around the things: {@code {"json":{"errors":[],"data":{"things":[…]}}}}. */
+    static JSONObject envelope(JSONArray things) throws JSONException {
+        return new JSONObject().put("json", new JSONObject().put("errors", new JSONArray())
+                .put("data", new JSONObject().put("things", things)));
+    }
+
+    /** The page of a comment, as the app's own thread requests ask for it. */
+    static String pageUrl(String post, String id, boolean parent, String sort) {
+        return API + "comments/" + post + "/_/" + id + ".json" + QUERY
+                + "&limit=" + (parent ? PARENT_LIMIT : COMMENT_LIMIT) + (sort == null ? "" : "&sort=" + sort);
+    }
+
+    /** Requests that may still be sent: all of a batch with no current reading, else what's left above the reserve. */
+    static int budget(RateLimit last, long now) {
+        if (last == null || now >= last.windowEnd) return BATCH;
+        return last.remaining - RESERVE;
+    }
+
+    /** Reddit's rate-limit headers read at {@code now}, or null if either is missing or not a number. */
+    static RateLimit rateLimit(String remaining, String reset, long now) {
+        if (remaining == null || reset == null) return null;
+        try {
+            return new RateLimit((int) Double.parseDouble(remaining), now + (long) (Double.parseDouble(reset) * 1000));
+        } catch (NumberFormatException error) {
+            return null;
+        }
+    }
+
     /**
      * The things to answer with, in the requested order. The first comment Reddit still has tells whose replies they
-     * are; if they are a comment's, one page of that comment usually holds them all. The others are fetched one by
-     * one, at most {@link #BATCH} pages in all, fewer when Reddit's rate limit runs low, and none started after the
+     * are; if they are a comment's, one page of that comment usually holds them all. The others get one page each,
+     * a few at a time, at most {@link #BATCH} pages in all, fewer when Reddit's rate limit runs low, and none started after the
      * answer's deadline; the rest come back as a "more" thing. Comments Reddit no longer has are left out. Pages are
      * fetched on the pool, so the calling thread waits no longer than {@code timeoutMs}.
      */
@@ -374,31 +401,19 @@ public final class MoreComments {
 
         @Override
         public JSONObject comment(String id, boolean parent) throws Exception {
-            String url = API + "comments/" + post + "/_/" + id + ".json" + QUERY
-                    + "&limit=" + (parent ? PARENT_LIMIT : COMMENT_LIMIT) + (sort == null ? "" : "&sort=" + sort);
+            String url = pageUrl(post, id, parent, sort);
             Http.Reply reply = Http.send("GET", url, headers, null, true, PAGE_TIMEOUT_MS);
-            readRateLimit(reply);
+            RateLimit reading = rateLimit(reply.header("X-Ratelimit-Remaining"), reply.header("X-Ratelimit-Reset"),
+                    System.currentTimeMillis());
+            // Without one, the last reading stays.
+            if (reading != null) rateLimit = reading;
             if (reply.status != 200) throw new IOException("Reddit returned " + reply.status + " for " + url);
             return focus(new JSONArray(new String(reply.body, StandardCharsets.UTF_8)), id);
         }
 
         @Override
         public int budget() {
-            RateLimit last = rateLimit;
-            if (last == null || System.currentTimeMillis() >= last.windowEnd) return BATCH;
-            return last.remaining - RESERVE;
-        }
-
-        private static void readRateLimit(Http.Reply reply) {
-            String left = reply.header("X-Ratelimit-Remaining");
-            String reset = reply.header("X-Ratelimit-Reset");
-            if (left == null || reset == null) return;
-            try {
-                rateLimit = new RateLimit((int) Double.parseDouble(left),
-                        System.currentTimeMillis() + (long) (Double.parseDouble(reset) * 1000));
-            } catch (NumberFormatException ignored) {
-                // Keep the last reading.
-            }
+            return MoreComments.budget(rateLimit, System.currentTimeMillis());
         }
     }
 }
