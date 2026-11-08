@@ -39,6 +39,7 @@ Tested on `com.laurencedawson.reddit_sync` `v23.06.30-13:39`.
 | Fix Redgifs | Fixes Redgifs videos not loading. |
 | Fix post thumbnails | Fixes post thumbnails not loading. |
 | Fix video downloads | Fixes downloaded Reddit videos having only audio. |
+| Fix View more comments | Fixes "View more" not loading further comments. |
 | Use /user/ endpoint (off by default) | Requests user profiles from /user/ instead of /u/. Not needed today: Reddit redirects /u/ to /user/, and the app follows the redirect. |
 
 Spoof client defaults to [RedReader](https://github.com/QuantumBadger/RedReader)'s client. If Reddit stops accepting
