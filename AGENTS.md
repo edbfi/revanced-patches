@@ -12,7 +12,7 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 - Java that runs inside an app goes in an extension module, `extensions/<app>/`, package
   `app.edbfi.extension.<app>`, with compile-only stubs of the app's classes in its `stub/` subproject. Add it with
   the first patch that needs it, and keep kotlin-stdlib out of its runtime classpath. The first extension module
-  also brings the root `build.gradle.kts` (`android.library apply false`), `extensions/proguard-rules.pro` and an
+  also adds `android.library apply false` to the root `build.gradle.kts`, `extensions/proguard-rules.pro` and an
   Android SDK on the machine.
 - Never commit APKs, bundles, keystores or app code. Samples and patched output go in the ignored `tmp/`.
 
