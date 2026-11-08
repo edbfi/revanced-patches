@@ -1,11 +1,11 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-only
-# Runs rea from the main checkout's .rea install, shared by every worktree, with this repo's tool
+# Runs rea from the main checkout's .rea/install (just setup-rea), shared by every worktree, with this repo's tool
 # paths. With no arguments it starts the MCP server (as .mcp.json, .codex/config.toml and
 # opencode.json do); otherwise it runs a rea CLI command, e.g. `scripts/rea.sh doctor`.
 set -eu
 root=$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
-rea=$root/.rea
+rea=$root/.rea/install
 if [ ! -x "$rea/node_modules/node/bin/node" ]; then
     echo "rea is not installed: run 'just setup-rea' in $root" >&2
     exit 1

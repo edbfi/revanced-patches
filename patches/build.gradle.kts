@@ -19,6 +19,11 @@ patches {
     }
 }
 
+java {
+    // The plugin sets only the target; without this, Java sources would compile as the daemon's JDK 25.
+    sourceCompatibility = JavaVersion.VERSION_17
+}
+
 kotlin {
     // The plugin turns ABI validation on. Nothing consumes this bundle's Kotlin API, so there is
     // no reference dump to check against.

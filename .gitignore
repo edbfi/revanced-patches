@@ -14,8 +14,7 @@ local.properties
 *.jks
 
 # rea install (just setup-rea) and local tools (just patch)
-/.rea/node_modules/
-/.rea/*.jar
+/.rea/install/
 /.tools/
 
 # Scratch space: reference checkouts, sample APKs, patched output

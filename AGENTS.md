@@ -40,15 +40,15 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 
 ## rea
 
-- `.mcp.json`, `.codex/config.toml` and `opencode.json` start `scripts/rea.sh`, which runs the rea pinned in
-  `.rea/package.json` from the main checkout. `just setup-rea` installs it, fetches its JADX bridge, re-syncs
-  `.agents/skills/reverse-engineer-anything` from the installed package, and checks Ghidra and JADX.
+- `.mcp.json`, `.codex/config.toml` and `opencode.json` start `scripts/rea.sh`, which runs rea from the main
+  checkout's ignored `.rea/install/`, shared by every worktree. `just setup-rea` installs the current checkout's
+  pin (`.rea/package.json`) there, fetches its JADX bridge, re-syncs `.agents/skills/reverse-engineer-anything`
+  from the installed package, and checks Ghidra and JADX.
 - Machine tools: Homebrew `openjdk@25` and `apktool`, and `adb`. rea 6.8.0 rejects Ghidra 12.2, Homebrew's
   version, so Ghidra 12.1.x comes from NSA's release zip into `~/.local/opt/ghidra_12.1.<n>_PUBLIC` (or set
   `GHIDRA_INSTALL_DIR`); on arm64, build its decompiler with `support/gradle/gradlew buildNatives`.
 - Bump rea by hand: change `.rea/package.json`, refresh the lock with
-  `npm install --package-lock-only --prefix .rea`, run `just setup-rea` from the main checkout, and commit the
-  skill changes with it.
+  `npm install --package-lock-only --prefix .rea`, run `just setup-rea`, and commit the skill changes with it.
 - On arm64 Linux, x86_64 Android tools such as aapt2 run through `qemu-user-binfmt` with `libc6-amd64-cross`.
 
 ## Docs

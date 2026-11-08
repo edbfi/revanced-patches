@@ -206,7 +206,8 @@ jobs:
           [[ "$(head -c 2 "$rvp")" == PK ]] || { echo "::error::The bundle is not a zip"; exit 1; }
           actual="$(sha256sum "$rvp" | cut -d' ' -f1)"
           [[ "$actual" == "$EXPECTED_SHA256" ]] || { echo "::error::sha256 $actual, build reported $EXPECTED_SHA256"; exit 1; }
-          jq -e 'type == "object"' "$sigstore" > /dev/null || { echo "::error::The attestation is not JSON"; exit 1; }
+          # The attestation must name this bundle and this repository, as the CLI checks it.
+          gh attestation verify "$rvp" --repo "$GH_REPO" --bundle "$sigstore"
           # The public key and the VirusTotal script come from the released commit, which verify found on main.
           for file in keys/release-signing.asc scripts/release-virustotal.sh; do
             gh api -H 'Accept: application/vnd.github.raw' \
