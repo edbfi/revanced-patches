@@ -33,6 +33,8 @@ Tested on `com.laurencedawson.reddit_sync` `v23.06.30-13:39`.
 | Patch | What it does |
 | --- | --- |
 | Spoof client | Logs in and browses with another app's Reddit OAuth client; Reddit no longer accepts Sync's. |
+| Disable ads | Removes ads and the ad consent form, and stops the ad SDKs from contacting their servers. |
+| Disable Sync for Lemmy bottom sheet | Removes the Sync for Lemmy promotion shown at every start. |
 
 Spoof client defaults to [RedReader](https://github.com/QuantumBadger/RedReader)'s client. If Reddit stops accepting
 it, set all three options to another "installed app" client: `OAuth client ID`, `Redirect URI` (the one registered
