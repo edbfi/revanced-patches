@@ -73,7 +73,8 @@ public class ImgurTest {
         FakeApi api = new FakeApi().answer("album/AbC1234", 200, "{\"data\":{\"images\":[]}}");
         Http.Reply reply = Imgur.reply(ALBUM + "AbC1234", null, null, api);
         assertEquals(200, reply.status);
-        assertSame(api.replies.get("album/AbC1234"), reply);
+        assertArrayEquals(api.replies.get("album/AbC1234").body, reply.body);
+        assertEquals(Imgur.CACHE_CONTROL, reply.header("cache-control"));
         assertEquals(Arrays.asList("GET album/AbC1234"), api.asked);
     }
 
@@ -92,6 +93,7 @@ public class ImgurTest {
         assertEquals(640, images.getJSONObject(0).getInt("width"));
         assertEquals(480, images.getJSONObject(0).getInt("height"));
         assertEquals("application/json", reply.header("content-type"));
+        assertEquals(Imgur.CACHE_CONTROL, reply.header("cache-control"));
     }
 
     @Test
@@ -99,6 +101,7 @@ public class ImgurTest {
         FakeApi api = new FakeApi().answer("album/AbC1234", 404, "{\"data\":{\"error\":\"album not found\"}}");
         Http.Reply reply = Imgur.reply(ALBUM + "AbC1234", null, null, api);
         assertSame(api.replies.get("album/AbC1234"), reply);
+        assertNull(reply.header("cache-control"));
     }
 
     @Test
@@ -106,6 +109,7 @@ public class ImgurTest {
         FakeApi api = new FakeApi().answer("album/AbC1234", 429, "{}").answer("image/AbC1234", 200, IMAGE_JSON);
         Http.Reply reply = Imgur.reply(ALBUM + "AbC1234", null, null, api);
         assertEquals(429, reply.status);
+        assertNull(reply.header("cache-control"));
         assertEquals(Arrays.asList("GET album/AbC1234"), api.asked);
     }
 
@@ -113,7 +117,8 @@ public class ImgurTest {
     public void loadsASingleImageFromTheApi() throws Exception {
         FakeApi api = new FakeApi().answer("image/AbC1234", 200, IMAGE_JSON);
         Http.Reply reply = Imgur.reply(IMAGE + "AbC1234", null, null, api);
-        assertSame(api.replies.get("image/AbC1234"), reply);
+        assertArrayEquals(api.replies.get("image/AbC1234").body, reply.body);
+        assertEquals(Imgur.CACHE_CONTROL, reply.header("cache-control"));
         assertEquals(Arrays.asList("GET image/AbC1234"), api.asked);
     }
 
@@ -124,6 +129,7 @@ public class ImgurTest {
         Http.Reply reply = Imgur.reply(UPLOAD, form, "application/x-www-form-urlencoded; charset=UTF-8", api);
         assertEquals(200, reply.status);
         assertEquals(Arrays.asList("POST image"), api.asked);
+        assertEquals("no-store", reply.header("cache-control"));
         assertArrayEquals(form, api.body);
         assertEquals("application/x-www-form-urlencoded; charset=UTF-8", api.contentType);
     }
@@ -144,6 +150,8 @@ public class ImgurTest {
         assertEquals("gjUctpc", Imgur.withoutTitle("theosophy-figures-gjUctpc"));
         assertEquals("gjUctpc?x=1#2", Imgur.withoutTitle("theosophy-figures-gjUctpc?x=1#2"));
         assertEquals("gjUctpc.jpg", Imgur.withoutTitle("theosophy-figures-gjUctpc.jpg"));
+        // Old posts' IDs have 5 characters.
+        assertEquals("nEGrc", Imgur.withoutTitle("some-title-nEGrc"));
     }
 
     @Test
@@ -151,8 +159,9 @@ public class ImgurTest {
         assertEquals("AbC1234", Imgur.withoutTitle("AbC1234"));
         assertEquals("AbC1234.jpg", Imgur.withoutTitle("AbC1234.jpg"));
         assertEquals("xIolo_d.jpg", Imgur.withoutTitle("xIolo_d.jpg"));
-        // Not a 7-character ID after the dash.
+        // Not a 5- or 7-character ID after the dash.
         assertEquals("AbC1234-mobile", Imgur.withoutTitle("AbC1234-mobile"));
+        assertEquals("a-AbC123", Imgur.withoutTitle("a-AbC123"));
         assertEquals("-AbC1234", Imgur.withoutTitle("-AbC1234"));
         assertEquals("a-b", Imgur.withoutTitle("a-b"));
         // A dash after the ID's end is not part of the name.

@@ -7,6 +7,7 @@ import com.android.volley.Request;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -24,6 +25,9 @@ public final class Imgur {
     private static final String API = "https://api.imgur.com/3/";
     // An upload sends the whole image, base64-encoded.
     private static final int UPLOAD_TIMEOUT_MS = 60_000;
+    // Imgur sends no cache headers, so the app would store its answers already expired: it would ask again on every
+    // open and forget the album page it was on. An hour, as the app caches its own gallery answers.
+    static final String CACHE_CONTROL = "max-age=3600";
 
     /** Imgur's API, sent the client ID and the system's own User-Agent; a fake in tests. */
     interface Api {
@@ -75,17 +79,30 @@ public final class Imgur {
     static Http.Reply reply(String url, byte[] body, String contentType, Api api) throws Exception {
         if (url.startsWith(UPLOAD)) {
             if (body == null) throw new IllegalArgumentException("Upload without a body");
-            return api.send("POST", "image", body, contentType);
+            // The app caches every upload's answer under the same key: never let one answer the next.
+            return withCacheControl(api.send("POST", "image", body, contentType), "no-store");
         }
         String id = mirrorId(url);
         if (id == null) throw new IllegalArgumentException("Unexpected Imgur URL: " + url);
-        if (url.startsWith(IMAGE_MIRROR)) return api.send("GET", "image/" + id, null, null);
+        if (url.startsWith(IMAGE_MIRROR)) return cached(api.send("GET", "image/" + id, null, null));
         Http.Reply album = api.send("GET", "album/" + id, null, null);
-        if (album.status != 404) return album;
+        if (album.status != 404) return cached(album);
         // Links to a single image posted to Imgur's gallery look like album links.
         Http.Reply image = api.send("GET", "image/" + id, null, null);
         if (image.status != 200) return album;
-        return new Http.Reply(200, albumOf(image.body), VolleyHook.jsonHeaders());
+        return cached(new Http.Reply(200, albumOf(image.body), VolleyHook.jsonHeaders()));
+    }
+
+    /** A successful answer, made cacheable; others as they were. */
+    private static Http.Reply cached(Http.Reply reply) {
+        return reply.status == 200 ? withCacheControl(reply, CACHE_CONTROL) : reply;
+    }
+
+    private static Http.Reply withCacheControl(Http.Reply reply, String cacheControl) {
+        Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        headers.putAll(reply.headers);
+        headers.put("Cache-Control", cacheControl);
+        return new Http.Reply(reply.status, reply.body, headers);
     }
 
     /** The ID at the end of the app's mirror URL, {@code …/a/<hash>/<id>}, or null. Imgur IDs are case-sensitive. */
@@ -104,8 +121,8 @@ public final class Imgur {
 
     /**
      * Called by the app's Imgur ID parser with one path segment, before it cuts the segment at the first dash. Imgur's
-     * newer links put a title before the ID ({@code /gallery/funny-cat-AbC1234}): those become the ID with whatever
-     * followed it; every other segment is returned as it was.
+     * newer links put a title before the ID ({@code /gallery/funny-cat-AbC1234}), old posts' 5-character IDs included:
+     * those become the ID with whatever followed it; every other segment is returned as it was.
      */
     public static String withoutTitle(String segment) {
         if (segment == null) return null;
@@ -118,7 +135,7 @@ public final class Imgur {
         int dash = name.lastIndexOf('-');
         if (dash <= 0) return segment;
         String id = name.substring(dash + 1);
-        // The IDs Imgur gives new posts have 7 characters.
-        return id.matches("[A-Za-z0-9]{7}") ? id + segment.substring(end) : segment;
+        // Imgur's IDs have 7 characters, or 5 for old posts.
+        return id.matches("[A-Za-z0-9]{5}|[A-Za-z0-9]{7}") ? id + segment.substring(end) : segment;
     }
 }
