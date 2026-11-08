@@ -40,7 +40,7 @@ val spoofClientPatch =
             default = DEFAULT_REDIRECT_URI,
             description = "The redirect URI registered for the client ID, without characters that need URL encoding.",
             required = true,
-        ) { it?.matches(Regex("[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9._~/:-]+")) == true }
+        ) { it?.matches(Regex("[A-Za-z][A-Za-z0-9.-]*:[A-Za-z0-9._~/:-]+")) == true }
 
         val userAgent by stringOption(
             name = "User-Agent",
