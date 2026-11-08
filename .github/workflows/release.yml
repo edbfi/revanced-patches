@@ -1,0 +1,267 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Release automation, after game-mods' release.yml. Publish a GitHub release from main tagged
+# vX.Y.Z. Then:
+#   verify   (unprivileged) the tag is vX.Y.Z, points at the released commit, and that is on main;
+#   ci       (unprivileged) waits until CI has passed on that commit;
+#   build    (unprivileged) builds patches-X.Y.Z.rvp from the commit, without the Gradle cache;
+#   attest   (no secret)    signs build provenance; the CLI checks it with -a <rvp>.sigstore.json;
+#   publish  (privileged: GPG keys, VT_API_KEY, contents: write; shell only) takes the .rvp and
+#            the attestation in, signs the .rvp with GPG, submits it to VirusTotal, attaches the
+#            assets, and attaches patches-bundle.json last: ReVanced Manager reads
+#            releases/latest/download/patches-bundle.json.
+# A failed job is retried with "Re-run failed jobs": later jobs reuse the earlier jobs' artifacts,
+# and publish replaces the assets and the report block.
+name: Release
+on:
+  release:
+    types: [published]
+permissions: {}
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read }
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - id: tag
+        name: Require a vX.Y.Z tag whose commit is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          re='^v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$'
+          [[ "$TAG" =~ $re ]] || { echo "::error::Release tags look like v1.2.3"; exit 1; }
+          version="${BASH_REMATCH[1]}"
+          # The tag must still point at the event's commit.
+          tagged="$(gh api "repos/$GH_REPO/commits/refs/tags/$TAG" --jq .sha)"
+          if [[ "$tagged" != "$GITHUB_SHA" ]]; then
+            echo "::error::Tag $TAG points at '$tagged', not the released commit $GITHUB_SHA"
+            exit 1
+          fi
+          # compare/<commit>...main is "ahead" or "identical" only when main contains the commit.
+          status="$(gh api "repos/$GH_REPO/compare/$GITHUB_SHA...main" --jq .status)"
+          if [[ "$status" != ahead && "$status" != identical ]]; then
+            echo "::error::$GITHUB_SHA is not reachable from main (compare status: $status)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "$TAG ($GITHUB_SHA) is on main"
+
+  ci:
+    needs: verify
+    runs-on: ubuntu-latest
+    # Room for a just-merged commit's CI run to finish.
+    timeout-minutes: 65
+    permissions: { actions: read }
+    steps:
+      - name: Require successful CI on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Any non-PR CI run of this commit on main counts. A just-merged commit's run may still be going.
+          deadline=$((SECONDS + 60 * 60))
+          while :; do
+            runs="$(gh run list --workflow ci.yml --branch main --commit "$GITHUB_SHA" --limit 100 \
+              --json event,status,conclusion \
+              --jq '[.[] | select(.event == "push" or .event == "schedule" or .event == "workflow_dispatch")]')"
+            if jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' <<<"$runs" >/dev/null; then
+              echo "CI passed on $GITHUB_SHA"; break
+            fi
+            if jq -e 'length > 0 and all(.[]; .status == "completed")' <<<"$runs" >/dev/null; then
+              echo "::error::CI failed on $GITHUB_SHA; re-run it, then re-run failed jobs"; exit 1
+            fi
+            if ((SECONDS >= deadline)); then
+              echo "::error::No finished CI run on main for $GITHUB_SHA after an hour; re-run failed jobs once it passes"; exit 1
+            fi
+            sleep 30
+          done
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: { contents: read, packages: read }
+    # Artifact names carry the attempt that made them; "Re-run failed jobs" keeps earlier jobs' outputs.
+    outputs:
+      artifact: ${{ steps.check.outputs.artifact }}
+      sha256: ${{ steps.check.outputs.sha256 }}
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with: { distribution: temurin, java-version: "25" }
+      # No build cache in a release (zizmor cache-poisoning).
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with: { cache-disabled: true }
+      - run: ./gradlew --no-build-cache "-Pversion=$VERSION" check :patches:buildAndroid
+        env:
+          ORG_GRADLE_PROJECT_githubPackagesUsername: ${{ github.actor }}
+          ORG_GRADLE_PROJECT_githubPackagesPassword: ${{ github.token }}
+      - id: check
+        name: Check the bundle
+        run: |
+          set -euo pipefail
+          rvp="patches/build/libs/patches-$VERSION.rvp"
+          # ReVanced Manager rejects a bundle without dex code.
+          unzip -l "$rvp" | grep -q ' classes.dex$' || { echo "::error::$rvp holds no classes.dex"; exit 1; }
+          mkdir candidate && cp "$rvp" candidate/
+          { echo "artifact=rvp-$GITHUB_RUN_ATTEMPT"; echo "sha256=$(sha256sum "$rvp" | cut -d' ' -f1)"; } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.check.outputs.artifact }}
+          path: candidate/
+          retention-days: 7
+          if-no-files-found: error
+
+  attest:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, id-token: write, attestations: write }
+    outputs:
+      artifact: ${{ steps.name.outputs.artifact }}
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: ${{ runner.temp }}/rvp
+      - name: Check the bundle
+        env:
+          EXPECTED_SHA256: ${{ needs.build.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          actual="$(sha256sum "$RUNNER_TEMP/rvp/patches-$VERSION.rvp" | cut -d' ' -f1)"
+          [[ "$actual" == "$EXPECTED_SHA256" ]] || { echo "::error::sha256 $actual, build reported $EXPECTED_SHA256"; exit 1; }
+      - id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/rvp/patches-${{ needs.verify.outputs.version }}.rvp
+      - id: name
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          mkdir attestation
+          cp "$BUNDLE" "attestation/patches-$VERSION.rvp.sigstore.json"
+          echo "artifact=attestation-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.name.outputs.artifact }}
+          path: attestation/
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: [verify, ci, build, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: { contents: write, actions: read }
+    env:
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name }}
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - name: Take the bundle and its attestation in
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA256: ${{ needs.build.outputs.sha256 }}
+          RVP_ARTIFACT: ${{ needs.build.outputs.artifact }}
+          ATTESTATION_ARTIFACT: ${{ needs.attest.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ &&
+            "$RVP_ARTIFACT" =~ ^rvp-[0-9]+$ && "$ATTESTATION_ARTIFACT" =~ ^attestation-[0-9]+$ ]] ||
+            { echo "::error::Malformed job outputs"; exit 1; }
+          # The tag must not have moved since verify.
+          tagged="$(gh api "repos/$GH_REPO/commits/refs/tags/$TAG" --jq .sha)"
+          [[ "$tagged" == "$GITHUB_SHA" ]] || { echo "::error::Tag $TAG moved to '$tagged'"; exit 1; }
+          # Artifact intake (edbfi-ci's privileged_jobs.py): a fresh directory, exactly one regular file.
+          intake() {
+            local artifact="$1" name="$2" dir entries
+            dir="$(mktemp -d)"
+            gh run download "$GITHUB_RUN_ID" -n "$artifact" -D "$dir"
+            mapfile -d '' entries < <(find "$dir" -mindepth 1 -print0)
+            if [[ ${#entries[@]} -ne 1 || "${entries[0]}" != "$dir/$name" || -L "$dir/$name" || ! -f "$dir/$name" ]]; then
+              echo "::error::Artifact $artifact must hold exactly one regular file, $name" >&2
+              exit 1
+            fi
+            echo "$dir/$name"
+          }
+          rvp="$(intake "$RVP_ARTIFACT" "patches-$VERSION.rvp")"
+          sigstore="$(intake "$ATTESTATION_ARTIFACT" "patches-$VERSION.rvp.sigstore.json")"
+          [[ "$(head -c 2 "$rvp")" == PK ]] || { echo "::error::The bundle is not a zip"; exit 1; }
+          actual="$(sha256sum "$rvp" | cut -d' ' -f1)"
+          [[ "$actual" == "$EXPECTED_SHA256" ]] || { echo "::error::sha256 $actual, build reported $EXPECTED_SHA256"; exit 1; }
+          # The attestation must name this bundle and this repository, as the CLI checks it.
+          gh attestation verify "$rvp" --repo "$GH_REPO" --bundle "$sigstore"
+          # The public key and the VirusTotal script come from the released commit, which verify found on main.
+          for file in keys/release-signing.asc scripts/release-virustotal.sh; do
+            gh api -H 'Accept: application/vnd.github.raw' \
+              "repos/$GH_REPO/contents/$file?ref=$GITHUB_SHA" > "$RUNNER_TEMP/$(basename "$file")"
+          done
+          { echo "RVP=$rvp"; echo "SIGSTORE=$sigstore"; } >> "$GITHUB_ENV"
+      - name: Sign the bundle
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_FINGERPRINT: ${{ vars.GPG_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --import <<<"$GPG_PRIVATE_KEY"
+          gpg --batch --pinentry-mode loopback --passphrase-fd 0 --local-user "$GPG_FINGERPRINT!" \
+            --armor --detach-sign --output "$RVP.asc" "$RVP" <<<"$GPG_PASSPHRASE"
+          # The signature must check against the public key users get from the repo.
+          export GNUPGHOME="$RUNNER_TEMP/gnupg-public"
+          mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --import "$RUNNER_TEMP/release-signing.asc"
+          gpg --batch --verify "$RVP.asc" "$RVP"
+      - name: Submit to VirusTotal
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/release-virustotal.sh" scan "$RVP" "$RUNNER_TEMP/virustotal.md"
+          cat "$RUNNER_TEMP/virustotal.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Attach the assets and the report links
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "$RVP" "$RVP.asc" "$SIGSTORE" --clobber
+          gh release view "$TAG" --json body > "$RUNNER_TEMP/release.json"
+          bash "$RUNNER_TEMP/release-virustotal.sh" notes "$RUNNER_TEMP/release.json" "$RUNNER_TEMP/virustotal.md" "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+      # Last, so the feed never names assets that aren't attached. Until this step, latest/download/
+      # patches-bundle.json is a 404: GitHub marks the release latest when it is published.
+      - name: Attach patches-bundle.json for ReVanced Manager
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release="$(gh release view "$TAG" --json publishedAt,body)"
+          base="https://github.com/$GH_REPO/releases/download/$TAG"
+          # Manager parses created_at as a LocalDateTime, which takes no zone suffix.
+          jq -n --argjson release "$release" --arg base "$base" --arg tag "$TAG" --arg version "$VERSION" '{
+            created_at: ($release.publishedAt | rtrimstr("Z")),
+            description: $release.body,
+            download_url: "\($base)/patches-\($version).rvp",
+            signature_download_url: "\($base)/patches-\($version).rvp.asc",
+            version: $tag
+          }' > "$RUNNER_TEMP/patches-bundle.json"
+          gh release upload "$TAG" "$RUNNER_TEMP/patches-bundle.json" --clobber
