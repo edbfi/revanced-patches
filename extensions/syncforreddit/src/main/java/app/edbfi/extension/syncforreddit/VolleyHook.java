@@ -3,6 +3,8 @@ package app.edbfi.extension.syncforreddit;
 
 import com.android.volley.NetworkResponse;
 import com.android.volley.Request;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Runs first in Volley's {@code BasicNetwork.performRequest}, on Volley's network threads. A handler a patch turned
@@ -18,10 +20,23 @@ public final class VolleyHook {
         String url = request.getUrl();
         if (Redgifs.isEnabled() && Redgifs.handles(url)) return Redgifs.answer(url);
         if (MoreComments.isEnabled() && MoreComments.handles(url)) return MoreComments.answer(request);
+        if (Galleries.isEnabled() && Galleries.handles(url)) return Galleries.answer(request);
+        if (Imgur.isEnabled() && Imgur.handles(url)) return Imgur.answer(request);
         return null;
     }
 
     static NetworkResponse response(Http.Reply reply) {
         return new NetworkResponse(reply.status, reply.body, reply.headers, false, 0);
+    }
+
+    /** A response the extension made itself. */
+    static NetworkResponse json(int status, byte[] body) {
+        return response(new Http.Reply(status, body, jsonHeaders()));
+    }
+
+    static Map<String, String> jsonHeaders() {
+        Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        headers.put("Content-Type", "application/json");
+        return headers;
     }
 }

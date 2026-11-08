@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -110,16 +109,16 @@ public final class MoreComments {
             }
             Source reddit = new Reddit(link.substring(3), sort(form.get("sort")), request.getHeaders(), request);
             JSONArray things = things(link, ids, reddit, pool(), ANSWER_DEADLINE_MS);
-            return reply(200, envelope(things).toString().getBytes(StandardCharsets.UTF_8));
+            return VolleyHook.json(200, envelope(things).toString().getBytes(StandardCharsets.UTF_8));
         } catch (InterruptedException error) {
             // Volley stops its network threads this way.
             Thread.currentThread().interrupt();
-            return reply(502, new byte[0]);
+            return VolleyHook.json(502, new byte[0]);
         } catch (CancellationException error) {
-            return reply(502, new byte[0]);
+            return VolleyHook.json(502, new byte[0]);
         } catch (Exception error) {
             Log.w(VolleyHook.TAG, "More comments failed", error);
-            return reply(502, new byte[0]);
+            return VolleyHook.json(502, new byte[0]);
         }
     }
 
@@ -372,12 +371,6 @@ public final class MoreComments {
             });
         }
         return pool;
-    }
-
-    private static NetworkResponse reply(int status, byte[] body) {
-        Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        headers.put("Content-Type", "application/json");
-        return VolleyHook.response(new Http.Reply(status, body, headers));
     }
 
     /** Comment pages from Reddit, sent with the app's own token and User-Agent. */
