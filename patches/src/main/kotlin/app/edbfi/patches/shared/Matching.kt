@@ -27,11 +27,9 @@ internal fun BytecodePatchContext.uniqueMethod(
     val second =
         firstImmutableMethodDeclarativelyOrNull(*strings) {
             build()
-            predicate { !sameMethod(this, first) }
+            predicate { this != first }
         }
-    if (second != null) {
-        throw PatchException("Found more than one $what: ${describe(first)} and ${describe(second)}")
-    }
+    if (second != null) throw PatchException("Found more than one $what: $first and $second")
     return firstMethod(first)
 }
 
@@ -40,10 +38,3 @@ internal fun BytecodePatchContext.isDeclaredIn(
     method: Method,
     sourceFile: String,
 ): Boolean = classDefs[method.definingClass]?.sourceFile == sourceFile
-
-private fun sameMethod(
-    a: Method,
-    b: Method,
-) = describe(a) == describe(b)
-
-private fun describe(method: Method) = "${method.definingClass}->${method.name}(${method.parameterTypes.joinToString("")})${method.returnType}"

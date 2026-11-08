@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 package app.edbfi.patches.syncforreddit.api.spoofclient
 
+import app.edbfi.patches.shared.returnString
 import app.edbfi.patches.shared.rewriteStrings
-import app.edbfi.patches.shared.smaliString
 import app.edbfi.patches.syncforreddit.SYNC_PACKAGE
 import app.edbfi.patches.syncforreddit.SYNC_VERSION
-import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod
-import app.revanced.patcher.extensions.addInstructions
 import app.revanced.patcher.firstMethod
 import app.revanced.patcher.patch.PatchException
 import app.revanced.patcher.patch.bytecodePatch
@@ -40,16 +38,16 @@ val spoofClientPatch =
         val redirectUri by stringOption(
             name = "Redirect URI",
             default = DEFAULT_REDIRECT_URI,
-            description = "The redirect URI registered for the client ID.",
+            description = "The redirect URI registered for the client ID, without characters that need URL encoding.",
             required = true,
-        ) { it?.matches(Regex("[A-Za-z][A-Za-z0-9+.-]*://\\S+")) == true }
+        ) { it?.matches(Regex("[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9._~/:-]+")) == true }
 
         val userAgent by stringOption(
             name = "User-Agent",
             default = DEFAULT_USER_AGENT,
             description = "The User-Agent sent to Reddit: that of the app the client ID belongs to.",
             required = true,
-        ) { !it.isNullOrBlank() && it.none { c -> c < ' ' } }
+        ) { it?.matches(Regex("[ -~]+")) == true && it.isNotBlank() }
 
         apply {
             val id = clientId!!
@@ -73,15 +71,3 @@ val spoofClientPatch =
 private fun String.withClientId(id: String) = if (startsWith(AUTHORIZE_PREFIX)) replace(Regex("client_id=[^&]*"), "client_id=$id") else null
 
 private fun String.onWwwHost() = if (startsWith(SSL_HOST)) WWW_HOST + removePrefix(SSL_HOST) else null
-
-/** Makes the method return [value]. The original body stays behind the early return. */
-private fun MutableMethod.returnString(value: String) {
-    if ((implementation?.registerCount ?: 0) < 1) throw PatchException("$name has no register for a string")
-    addInstructions(
-        0,
-        """
-        const-string v0, ${smaliString(value)}
-        return-object v0
-        """,
-    )
-}

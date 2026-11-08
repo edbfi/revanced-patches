@@ -2,14 +2,19 @@
 package app.edbfi.patches.shared
 
 import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod
+import app.revanced.patcher.extensions.addInstructions
 import app.revanced.patcher.extensions.getInstruction
 import app.revanced.patcher.extensions.instructions
 import app.revanced.patcher.extensions.replaceInstruction
+import app.revanced.patcher.extensions.string
+import app.revanced.patcher.patch.PatchException
 import com.android.tools.smali.dexlib2.Opcode
-import com.android.tools.smali.dexlib2.iface.instruction.Instruction
+import com.android.tools.smali.dexlib2.builder.BuilderInstruction
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction11x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21c
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction31c
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
-import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import com.android.tools.smali.dexlib2.immutable.reference.ImmutableStringReference
 
 /**
  * Rewrites the method's string literals: [transform] returns the new value, or null to keep a literal.
@@ -18,39 +23,35 @@ import com.android.tools.smali.dexlib2.iface.reference.StringReference
 internal fun MutableMethod.rewriteStrings(transform: (String) -> String?): Int {
     val edits =
         instructions.withIndex().mapNotNull { (index, instruction) ->
-            val mnemonic =
+            val jumbo =
                 when (instruction.opcode) {
-                    Opcode.CONST_STRING -> "const-string"
-                    Opcode.CONST_STRING_JUMBO -> "const-string/jumbo"
+                    Opcode.CONST_STRING -> false
+                    Opcode.CONST_STRING_JUMBO -> true
                     else -> return@mapNotNull null
                 }
-            val old = instruction.stringLiteral ?: return@mapNotNull null
+            val old = instruction.string ?: return@mapNotNull null
             val new = transform(old)?.takeIf { it != old } ?: return@mapNotNull null
-            Triple(index, mnemonic, new)
+            Triple(index, jumbo, new)
         }
-    for ((index, mnemonic, new) in edits) {
+    for ((index, jumbo, new) in edits) {
         val register = getInstruction<OneRegisterInstruction>(index).registerA
-        replaceInstruction(index, "$mnemonic v$register, ${smaliString(new)}")
+        replaceInstruction(index, constString(register, new, jumbo))
     }
     return edits.size
 }
 
-/** [value] as a quoted smali string literal. */
-internal fun smaliString(value: String): String = buildString {
-    append('"')
-    for (c in value) {
-        when (c) {
-            '\\' -> append("\\\\")
-            '"' -> append("\\\"")
-            '\n' -> append("\\n")
-            '\r' -> append("\\r")
-            '\t' -> append("\\t")
-            else -> if (c < ' ' || c > '~') append("\\u%04x".format(c.code)) else append(c)
-        }
-    }
-    append('"')
+/** Makes the method return [value]. The original body stays behind the early return. */
+internal fun MutableMethod.returnString(value: String) {
+    if ((implementation?.registerCount ?: 0) < 1) throw PatchException("$name has no register for a string")
+    addInstructions(0, listOf<BuilderInstruction>(constString(0, value, jumbo = false), BuilderInstruction11x(Opcode.RETURN_OBJECT, 0)))
 }
 
-/** The string an instruction loads, or null when it loads none. */
-internal val Instruction.stringLiteral: String?
-    get() = ((this as? ReferenceInstruction)?.reference as? StringReference)?.string
+private fun constString(
+    register: Int,
+    value: String,
+    jumbo: Boolean,
+): BuilderInstruction = if (jumbo) {
+    BuilderInstruction31c(Opcode.CONST_STRING_JUMBO, register, ImmutableStringReference(value))
+} else {
+    BuilderInstruction21c(Opcode.CONST_STRING, register, ImmutableStringReference(value))
+}
