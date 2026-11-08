@@ -5,6 +5,8 @@ import app.edbfi.patches.shared.isDeclaredIn
 import app.edbfi.patches.shared.uniqueMethod
 import app.revanced.patcher.accessFlags
 import app.revanced.patcher.custom
+import app.revanced.patcher.definingClass
+import app.revanced.patcher.name
 import app.revanced.patcher.parameterTypes
 import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patcher.returnType
@@ -16,4 +18,14 @@ internal fun BytecodePatchContext.adsEnabledMethod() = uniqueMethod("the ads-ena
     returnType("Z")
     parameterTypes("Landroid/content/Context;")
     custom { isDeclaredIn(this, "SyncIapHelper.java") }
+}
+
+/**
+ * The Google Mobile Ads SDK's manifest provider starts the SDK at process start, before any check Sync makes. The SDK
+ * keeps the class name: the manifest names it.
+ */
+internal fun BytecodePatchContext.adsInitProviderMethod() = uniqueMethod("MobileAdsInitProvider.attachInfo") {
+    definingClass("Lcom/google/android/gms/ads/MobileAdsInitProvider;")
+    name("attachInfo")
+    parameterTypes("Landroid/content/Context;", "Landroid/content/pm/ProviderInfo;")
 }
