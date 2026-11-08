@@ -43,7 +43,8 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 
 - `just device` starts Android 15 in Docker ([Redroid](https://github.com/remote-android/redroid-doc), no VM or
   KVM) and connects adb on loopback; use `ANDROID_SERIAL=127.0.0.1:5600`. `just device-reset` deletes it and its
-  data. Agents share the one device: take turns.
+  data, including the owner's login: agents run it only when the owner asks. Agents share the one device: take
+  turns.
 - The host kernel needs binderfs and PSI; where PSI is off by default, boot with `psi=1`. On arm64 Linux, use a
   native `adb` on `PATH`, not the SDK's x86_64 one.
 - It renders in software, and playing a video crashes its SurfaceFlinger

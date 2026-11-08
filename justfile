@@ -47,9 +47,11 @@ device:
     #!/usr/bin/env bash
     set -euo pipefail
     serial={{ device_serial }}
+    command -v docker >/dev/null && command -v adb >/dev/null || { echo "Install docker and adb first." >&2; exit 1; }
     grep -qw binder /proc/filesystems || { echo "The kernel has no binderfs, which Redroid needs." >&2; exit 1; }
     # Without PSI, Android's low-memory killer exits and every app start stalls on it.
     [[ -e /proc/pressure/memory ]] || { echo "PSI is off: boot the kernel with psi=1." >&2; exit 1; }
+    # An existing device keeps the image and boot arguments it was created with; device-reset applies new ones.
     if docker container inspect revanced-device >/dev/null 2>&1; then
         docker start revanced-device >/dev/null
     else
