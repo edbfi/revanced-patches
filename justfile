@@ -9,6 +9,15 @@ jadx_sha256 := "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75
 device_image := "redroid/redroid:15.0.0_64only-latest@sha256:b51bde9cef80f7bd7581148192f2b2f4d41f23c6344cfe88eceeb8ddd67490ee"
 device_serial := "127.0.0.1:5600"
 
+# Reddit's login page rejects Redroid's WebView (Chromium 128). A Chromium snapshot build replaces it as an update,
+# re-signed with AOSP's public test key, which the built-in WebView is signed with. The snapshot bucket isn't an
+# archive: if the revision is gone, pin a newer Android_Arm64 one and update all three webview_* values.
+webview_revision := "1738657"
+webview_version := "159.0.8152.0"
+webview_sha256 := "bf4b6bb68f246da2d1a30bd5e531cfe09506927889d8d078702d01fbc66b926c"
+aosp_test_pk8_sha256 := "495675d32e89a149d5abe191f4e9c0e218b9068714e9b53a7c91e164a0741a23"
+aosp_test_cert_sha256 := "a4384ba815b9499a5ce349b4e33c1755278873fe2eac150a068823f526e6dbde"
+
 # List the recipes
 default:
     @just --list
@@ -75,7 +84,38 @@ device:
         for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
             settings put global "$scale" 0
         done'
+    just _device-webview "$serial"
     echo "ANDROID_SERIAL=$serial"
+
+# Install the pinned WebView on the device unless it already runs it
+[positional-arguments]
+_device-webview serial:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    serial=$1
+    abi=$(adb -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')
+    if [[ $abi != arm64-v8a ]]; then
+        echo "No pinned WebView for $abi: Reddit's login won't load on this device." >&2
+        exit 0
+    fi
+    current=$(adb -s "$serial" shell dumpsys webviewupdate | sed -n 's/.*Current WebView package (name, version): ([^,]*, \(.*\))/\1/p' | tr -d '\r')
+    [[ $current == {{ webview_version }} ]] && exit 0
+    apk=.tools/webview-{{ webview_version }}.apk
+    if [[ ! -f $apk ]]; then
+        zip=.tools/chrome-android-{{ webview_revision }}.zip
+        just _fetch "https://commondatastorage.googleapis.com/chromium-browser-snapshots/Android_Arm64/{{ webview_revision }}/chrome-android.zip" "$zip" {{ webview_sha256 }}
+        key=https://android.googlesource.com/platform/build/+/refs/tags/android-15.0.0_r1/target/product/security/testkey
+        curl -fsSL "$key.pk8?format=TEXT" | base64 -d > .tools/testkey.pk8
+        curl -fsSL "$key.x509.pem?format=TEXT" | base64 -d > .tools/testkey.x509.pem
+        printf '%s  %s\n' {{ aosp_test_pk8_sha256 }} .tools/testkey.pk8 {{ aosp_test_cert_sha256 }} .tools/testkey.x509.pem | sha256sum -c --quiet -
+        unzip -p "$zip" chrome-android/apks/SystemWebView.apk > "$apk.unsigned"
+        apksigner=$(ls -d "${ANDROID_HOME:?Set ANDROID_HOME to the Android SDK}"/build-tools/*/apksigner | sort -V | tail -n 1)
+        "$apksigner" sign --v4-signing-enabled false --key .tools/testkey.pk8 --cert .tools/testkey.x509.pem --out "$apk.part" "$apk.unsigned"
+        mv "$apk.part" "$apk"
+        rm "$apk.unsigned" "$zip"
+    fi
+    adb -s "$serial" install -r "$apk" >/dev/null
+    echo "WebView ${current:-?} replaced by {{ webview_version }}"
 
 # Delete the test device and its data
 [confirm("Delete the test device and all its data?")]
