@@ -11,9 +11,9 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
   code several apps share goes in `patches/…/patches/shared/`.
 - Java that runs inside an app goes in an extension module, `extensions/<app>/`, package
   `app.edbfi.extension.<app>`, with compile-only stubs of the app's classes in its `stub/` subproject. Add it with
-  the first patch that needs it, and keep kotlin-stdlib out of its runtime classpath. The first extension module
-  also adds `android.library apply false` to the root `build.gradle.kts`, `extensions/proguard-rules.pro` and an
-  Android SDK on the machine.
+  the first patch that needs it, and keep kotlin-stdlib out of its runtime classpath. Extension modules share
+  `extensions/proguard-rules.pro` and the root's `android.library apply false`; building them needs an Android SDK
+  (`ANDROID_HOME`).
 - Never commit APKs, bundles, keystores or app code. Samples and patched output go in the ignored `tmp/`.
 
 ## Patches

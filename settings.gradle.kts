@@ -22,5 +22,7 @@ plugins {
 settings {
     extensions {
         defaultNamespace = "app.edbfi.extension"
+        // R8 keeps the extension classes the patches call only with these rules; the plugin needs an absolute path.
+        proguardFiles(rootDir.resolve("extensions/proguard-rules.pro").absolutePath)
     }
 }

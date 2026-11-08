@@ -35,6 +35,11 @@ Tested on `com.laurencedawson.reddit_sync` `v23.06.30-13:39`.
 | Spoof client | Logs in and browses with another app's Reddit OAuth client; Reddit no longer accepts Sync's. |
 | Disable ads | Removes ads and the ad consent form, and keeps the ad SDKs from starting. |
 | Disable Sync for Lemmy bottom sheet | Removes the Sync for Lemmy promotion that shows at every start. |
+| Fix /s/ links | Opens Reddit share links (/s/) as the post they point to, from the app and from other apps. |
+| Fix Redgifs | Fixes Redgifs videos not loading. |
+| Fix post thumbnails | Fixes post thumbnails not loading. |
+| Fix video downloads | Fixes downloaded Reddit videos having only audio. |
+| Use /user/ endpoint (off by default) | Requests user profiles from /user/ instead of /u/. Not needed today: Reddit redirects /u/ to /user/, and the app follows the redirect. |
 
 Spoof client defaults to [RedReader](https://github.com/QuantumBadger/RedReader)'s client. If Reddit stops accepting
 it, set all three options to another "installed app" client: `OAuth client ID`, `Redirect URI` (the one registered
