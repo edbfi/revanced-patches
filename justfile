@@ -80,7 +80,8 @@ device:
 device-reset:
     #!/usr/bin/env bash
     set -euo pipefail
-    docker rm -f revanced-device >/dev/null 2>&1 || true
+    if docker container inspect revanced-device >/dev/null 2>&1; then docker rm -f revanced-device >/dev/null; fi
+    adb disconnect {{ device_serial }} >/dev/null 2>&1 || true
     data=${XDG_DATA_HOME:-$HOME/.local/share}/revanced-device
     # Android owns the files under /data, so remove them from a container instead of with sudo.
     if [[ -d "$data" ]]; then
