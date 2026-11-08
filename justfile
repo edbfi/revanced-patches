@@ -5,6 +5,10 @@ cli_version := "6.0.0"
 cli_sha256 := "c25549bc17d59d2eb94fa5f86e60e9b77a02772ca88f7050f8f1276f923a9958"
 jadx_sha256 := "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75"
 
+# Redroid (Android in a container, no VM). Android 15: Redroid's 16 image needs ashmem, which new kernels lack.
+device_image := "redroid/redroid:15.0.0_64only-latest@sha256:b51bde9cef80f7bd7581148192f2b2f4d41f23c6344cfe88eceeb8ddd67490ee"
+device_serial := "127.0.0.1:5600"
+
 # List the recipes
 default:
     @just --list
@@ -31,9 +35,63 @@ patch apk *args: build
     if [[ "$(uname -sm)" == "Linux aarch64" ]]; then export QEMU_LD_PREFIX=/usr/x86_64-linux-gnu; fi
     version=$(sed -n 's/^version=//p' gradle.properties)
     mkdir -p tmp/out
+    # One signing key for every worktree, so a patched app installed earlier updates in place and keeps its data.
+    keystore=$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)/tmp/test-signing.keystore
+    mkdir -p "$(dirname "$keystore")"
     # -b: a local build is unsigned, so skip signature verification.
     "${JAVA_HOME:+$JAVA_HOME/bin/}java" -jar "$cli" patch -b -p "patches/build/libs/patches-$version.rvp" \
-        -o "tmp/out/$(basename "$apk" .apk)-patched.apk" "$@" "$apk"
+        --keystore "$keystore" -o "tmp/out/$(basename "$apk" .apk)-patched.apk" "$@" "$apk"
+
+# Start the test device (Android 15 in Docker) and connect adb to it on loopback
+device:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    serial={{ device_serial }}
+    command -v docker >/dev/null && command -v adb >/dev/null || { echo "Install docker and adb first." >&2; exit 1; }
+    grep -qw binder /proc/filesystems || { echo "The kernel has no binderfs, which Redroid needs." >&2; exit 1; }
+    # Without PSI, Android's low-memory killer exits and every app start stalls on it.
+    [[ -e /proc/pressure/memory ]] || { echo "PSI is off: boot the kernel with psi=1." >&2; exit 1; }
+    # An existing device keeps the image and boot arguments it was created with; device-reset applies new ones.
+    if docker container inspect revanced-device >/dev/null 2>&1; then
+        docker start revanced-device >/dev/null
+    else
+        data=${XDG_DATA_HOME:-$HOME/.local/share}/revanced-device
+        mkdir -p "$data"
+        # DNS is set so a host resolver that filters ad domains can't hide an app's ad requests.
+        docker run -d --name revanced-device --privileged --memory=3g -v "$data:/data" -p "$serial:5555" \
+            {{ device_image }} androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=1080 androidboot.redroid_height=2400 androidboot.redroid_dpi=420 \
+            androidboot.redroid_net_ndns=1 androidboot.redroid_net_dns1=1.1.1.1 >/dev/null
+    fi
+    for _ in $(seq 60); do
+        adb connect "$serial" >/dev/null 2>&1 || true
+        [[ "$(adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]] && break
+        sleep 2
+    done
+    [[ "$(adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]] ||
+        { echo "The device didn't boot within 2 minutes; see docker logs revanced-device." >&2; exit 1; }
+    # Bluetooth crash-loops in a container (no real-time scheduling); animations only slow UI checks down.
+    adb -s "$serial" shell 'pm disable-user --user 0 com.android.bluetooth >/dev/null
+        for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
+            settings put global "$scale" 0
+        done'
+    echo "ANDROID_SERIAL=$serial"
+
+# Delete the test device and its data
+[confirm("Delete the test device and all its data?")]
+device-reset:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker info >/dev/null # fail loudly if docker is unreachable, rather than mistake that for "no device"
+    if docker container inspect revanced-device >/dev/null 2>&1; then docker rm -f revanced-device >/dev/null; fi
+    adb disconnect {{ device_serial }} >/dev/null 2>&1 || true
+    data=${XDG_DATA_HOME:-$HOME/.local/share}/revanced-device
+    # Android owns the files under /data, so remove them from a container instead of with sudo.
+    if [[ -d "$data" ]]; then
+        docker run --rm -v "$(dirname "$data"):/parent" \
+            alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf \
+            rm -rf "/parent/$(basename "$data")"
+    fi
 
 # Install this checkout's rea pin where every worktree finds it, vendor its skill and check Ghidra and JADX
 setup-rea:

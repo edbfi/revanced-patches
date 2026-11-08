@@ -33,10 +33,25 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 ## Commands
 
 - `just check` runs what CI runs, prek hooks included; `just build` builds the bundle; `just patch <apk>` applies it to an APK with
-  the pinned revanced-cli, into `tmp/out/`.
+  the pinned revanced-cli, into `tmp/out/`, signed with the main checkout's `tmp/test-signing.keystore` so every
+  worktree's build installs over the last with `adb install -r` and keeps the app's data.
 - Gradle needs `githubPackagesUsername` and `githubPackagesPassword` (a classic PAT with only `read:packages`)
   in `~/.gradle/gradle.properties`. Its daemon runs on JDK 25 (`gradle/gradle-daemon-jvm.properties`); point
   `org.gradle.java.installations.paths` there at a JDK 25 that Gradle doesn't find by itself, such as Homebrew's.
+
+## Test device
+
+- `just device` starts Android 15 in Docker ([Redroid](https://github.com/remote-android/redroid-doc), no VM or
+  KVM) and connects adb on loopback; use `ANDROID_SERIAL=127.0.0.1:5600`. `just device-reset` deletes it and its
+  data, including the owner's login: agents run it only when the owner asks. Agents share the one device: take
+  turns.
+- The host kernel needs binderfs and PSI; where PSI is off by default, boot with `psi=1`. On arm64 Linux, use a
+  native `adb` on `PATH`, not the SDK's x86_64 one.
+- It renders in software, and playing a video crashes its SurfaceFlinger
+  ([redroid-doc#920](https://github.com/remote-android/redroid-doc/issues/920)): turn autoplay off and check
+  videos through downloaded files and logs.
+- Agents never type account credentials. The owner logs in through scrcpy; the agent then keeps the login by
+  updating with `adb install -r`, never uninstalling.
 
 ## rea
 
