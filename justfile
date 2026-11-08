@@ -10,8 +10,8 @@ device_image := "redroid/redroid:15.0.0_64only-latest@sha256:b51bde9cef80f7bd758
 device_serial := "127.0.0.1:5600"
 
 # Reddit's login page rejects Redroid's WebView (Chromium 128). A Chromium snapshot build replaces it as an update,
-# re-signed with AOSP's public test key, which the built-in WebView is signed with. The snapshot bucket isn't an archive:
-# if the revision is gone, pin a newer Android_Arm64 one and update all three webview_* values.
+# re-signed with AOSP's public test key, which the built-in WebView is signed with. The snapshot bucket isn't an
+# archive: if the revision is gone, pin a newer Android_Arm64 one and update all three webview_* values.
 webview_revision := "1738657"
 webview_version := "159.0.8152.0"
 webview_sha256 := "bf4b6bb68f246da2d1a30bd5e531cfe09506927889d8d078702d01fbc66b926c"
