@@ -54,18 +54,4 @@ public class ShareLinksTest {
         assertNull(ShareLinks.target(share, 302, "https://example.com/r/pics/"));
         assertNull(ShareLinks.target(share, 302, "/r/pics/s/Other123"));
     }
-
-    @Test
-    public void handsEachFailedLinkBackOnce() {
-        String a = "https://www.reddit.com/r/pics/s/FailA";
-        String b = "https://www.reddit.com/r/pics/s/FailB";
-        ShareLinks.allowPassThrough(a);
-        ShareLinks.allowPassThrough(b);
-        ShareLinks.allowPassThrough(a);
-        assertTrue(ShareLinks.takePassThrough(a));
-        assertTrue(ShareLinks.takePassThrough(b));
-        assertTrue(ShareLinks.takePassThrough(a));
-        assertFalse(ShareLinks.takePassThrough(a));
-        assertFalse(ShareLinks.takePassThrough(b));
-    }
 }

@@ -6,6 +6,7 @@ import app.edbfi.patches.syncforreddit.misc.extension.extensionPatch
 import app.revanced.patcher.extensions.ExternalLabel
 import app.revanced.patcher.extensions.addInstructionsWithLabels
 import app.revanced.patcher.extensions.getInstruction
+import app.revanced.patcher.patch.PatchException
 import app.revanced.patcher.patch.bytecodePatch
 
 /** Lets the extension answer a Volley request before the app sends it; a null answer sends the app's request. */
@@ -15,6 +16,8 @@ internal val volleyHookPatch =
 
         apply {
             val performRequest = performRequestMethod()
+            // The hook's result goes in v0, which must be a local, not the request parameter.
+            if (performRequest.implementation!!.registerCount < 3) throw PatchException("performRequest has no local register")
             performRequest.addInstructionsWithLabels(
                 0,
                 """

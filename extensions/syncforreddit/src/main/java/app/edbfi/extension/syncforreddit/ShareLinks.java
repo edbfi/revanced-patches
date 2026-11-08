@@ -25,18 +25,19 @@ public final class ShareLinks {
     private static final Pattern REDDIT_URL =
             Pattern.compile("^https://(?:[a-z]+\\.)?reddit\\.com/.*", Pattern.CASE_INSENSITIVE);
     private static final String LINK_HANDLER = "com.laurencedawson.reddit_sync.ui.activities.IntentActivity";
-
-    // Share links that failed to resolve, each handed back to the app once so it is not resolved again.
-    private static final Map<String, Integer> PASS_THROUGH = new HashMap<>();
+    // A link from another app reopens from the background, which Android allows only for a few seconds after
+    // the app's last activity, so the redirect gets less time than other requests.
+    private static final int TIMEOUT_MS = 4_000;
 
     private ShareLinks() {}
 
     /**
      * Called first by the app's link router. Returns true when it takes over the link: it then resolves the
-     * redirect off the main thread and opens the result through the app's link handler.
+     * redirect off the main thread and opens the result through the app's link handler. The app's own handling
+     * reads the share ID as a post ID, so on failure it only reports the failure.
      */
     public static boolean open(Context context, String url, String userAgent) {
-        if (url == null || !isShareLink(url) || takePassThrough(url)) return false;
+        if (url == null || !isShareLink(url)) return false;
         // The caller may be an activity that finishes right away, so the result opens from the application.
         Context app = context.getApplicationContext();
         new Thread(() -> {
@@ -47,7 +48,7 @@ public final class ShareLinks {
                 Log.w(VolleyHook.TAG, "Could not resolve " + url, error);
             }
             String opened = target;
-            new Handler(Looper.getMainLooper()).post(() -> openInApp(app, url, opened));
+            new Handler(Looper.getMainLooper()).post(() -> openInApp(app, opened));
         }, "edbfi-share-link").start();
         return true;
     }
@@ -56,24 +57,11 @@ public final class ShareLinks {
         return SHARE_LINK.matcher(url).matches();
     }
 
-    static synchronized void allowPassThrough(String url) {
-        Integer pending = PASS_THROUGH.get(url);
-        PASS_THROUGH.put(url, pending == null ? 1 : pending + 1);
-    }
-
-    static synchronized boolean takePassThrough(String url) {
-        Integer pending = PASS_THROUGH.get(url);
-        if (pending == null) return false;
-        if (pending == 1) PASS_THROUGH.remove(url);
-        else PASS_THROUGH.put(url, pending - 1);
-        return true;
-    }
-
     private static String resolve(String url, String userAgent) throws Exception {
         String request = url.replaceFirst("(?i)^http:", "https:");
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", userAgent);
-        Http.Reply reply = Http.send("GET", request, headers, null, false);
+        Http.Reply reply = Http.send("GET", request, headers, null, false, TIMEOUT_MS);
         return target(request, reply.status, reply.header("Location"));
     }
 
@@ -107,14 +95,12 @@ public final class ShareLinks {
         return kept.append(fragment).toString();
     }
 
-    private static void openInApp(Context app, String shareLink, String target) {
-        String url = target;
-        if (url == null) {
+    private static void openInApp(Context app, String target) {
+        if (target == null) {
             Toast.makeText(app, "Could not open the share link", Toast.LENGTH_SHORT).show();
-            allowPassThrough(shareLink);
-            url = shareLink;
+            return;
         }
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(target))
                 .setClassName(app, LINK_HANDLER)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         app.startActivity(intent);

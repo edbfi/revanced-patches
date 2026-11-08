@@ -30,7 +30,7 @@ val fixVideoDownloadsPatch =
         apply {
             val method = manifestParserMethod()
             val code = method.instructions
-            // Each check is getTextContent(); contains(<literal>); move-result vX; if-<z> vX. v.redd.it now names its
+            // Each check is getTextContent() on the set; contains(<literal>); move-result vX; if-<z> vX. v.redd.it now names its
             // audio files CMAF_AUDIO_*.mp4, so neither matches and the audio set is read as the video. Both branches
             // now follow the manifest's own contentType or mimeType.
             val branches =
@@ -38,9 +38,12 @@ val fixVideoDownloadsPatch =
                     val at = code.indices.singleOrNull { code[it].string == literal }
                         ?: throw PatchException("Expected one \"$literal\" literal in ${method.name}")
                     val text = code.getOrNull(at - 2)
+                    val textResult = code.getOrNull(at - 1)
                     val result = code.getOrNull(at + 2)
                     val branch = code.getOrNull(at + 3)
                     if (text?.methodReference?.name != "getTextContent" ||
+                        textResult?.opcode != Opcode.MOVE_RESULT_OBJECT ||
+                        (textResult as OneRegisterInstruction).registerA == (text as FiveRegisterInstruction).registerC ||
                         code.getOrNull(at + 1)?.methodReference?.name != "contains" ||
                         result?.opcode != Opcode.MOVE_RESULT ||
                         branch?.opcode != branchOpcode ||
@@ -48,7 +51,7 @@ val fixVideoDownloadsPatch =
                     ) {
                         throw PatchException("The \"$literal\" check in ${method.name} has changed")
                     }
-                    Triple(at + 3, (text as FiveRegisterInstruction).registerC, (result as OneRegisterInstruction).registerA)
+                    Triple(at + 3, text.registerC, (result as OneRegisterInstruction).registerA)
                 }
             // Insert from the end so the earlier index stays valid.
             branches.sortedByDescending { it.first }.forEach { (branch, set, isAudio) ->

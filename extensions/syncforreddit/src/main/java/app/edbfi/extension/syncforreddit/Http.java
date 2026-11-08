@@ -35,12 +35,17 @@ final class Http {
 
     static Reply send(String method, String url, Map<String, String> headers, byte[] body, boolean followRedirects)
             throws IOException {
+        return send(method, url, headers, body, followRedirects, TIMEOUT_MS);
+    }
+
+    static Reply send(String method, String url, Map<String, String> headers, byte[] body, boolean followRedirects,
+            int timeoutMs) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setRequestMethod(method);
             connection.setInstanceFollowRedirects(followRedirects);
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
+            connection.setConnectTimeout(timeoutMs);
+            connection.setReadTimeout(timeoutMs);
             for (Map.Entry<String, String> header : headers.entrySet()) {
                 connection.setRequestProperty(header.getKey(), header.getValue());
             }
