@@ -16,4 +16,8 @@ public abstract class Request<T> {
     public byte[] getBody() throws AuthFailureError {
         throw new UnsupportedOperationException("stub");
     }
+
+    public boolean isCanceled() {
+        throw new UnsupportedOperationException("stub");
+    }
 }

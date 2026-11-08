@@ -6,6 +6,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +18,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONArray;
@@ -39,7 +41,10 @@ public class MoreCommentsTest {
         final Map<String, JSONObject> comments = new HashMap<>();
         final Set<String> failing = new HashSet<>();
         final List<String> requested = Collections.synchronizedList(new ArrayList<>());
-        int budget = MoreComments.BATCH;
+        volatile int budget = MoreComments.BATCH;
+        // The budget Reddit reports once the first page is back, or -1 to keep it.
+        volatile int budgetAfterFirst = -1;
+        volatile boolean canceled;
 
         Pages with(JSONObject... things) throws JSONException {
             for (JSONObject thing : things) {
@@ -57,6 +62,7 @@ public class MoreCommentsTest {
         @Override
         public JSONObject comment(String id, boolean parent) throws Exception {
             requested.add(id + (parent ? " (parent)" : ""));
+            if (budgetAfterFirst >= 0) budget = budgetAfterFirst;
             if (failing.contains(id)) throw new IOException("Reddit returned 500");
             JSONObject comment = comments.get(id);
             // Fresh JSON for every page, as from the network.
@@ -66,6 +72,11 @@ public class MoreCommentsTest {
         @Override
         public int budget() {
             return budget;
+        }
+
+        @Override
+        public boolean canceled() {
+            return canceled;
         }
     }
 
@@ -168,6 +179,88 @@ public class MoreCommentsTest {
     }
 
     @Test
+    public void theBudgetIsReadAgainAfterTheFirstPage() throws Exception {
+        Pages pages = new Pages();
+        for (String id : ids(5)) pages.with(comment(id, LINK));
+        pages.budgetAfterFirst = 1;
+
+        List<String> rows = rows(MoreComments.things(LINK, ids(5), pages, POOL));
+
+        assertEquals(Arrays.asList("c0 under t3_post", "c1 under t3_post", "more c2,c3,c4 under t3_post"), rows);
+    }
+
+    @Test
+    public void nothingIsSentOnceTheBudgetIsUsedUp() throws Exception {
+        Pages pages = new Pages().with(comment("c0", LINK));
+        pages.budget = 0;
+        try {
+            MoreComments.things(LINK, ids(1), pages, POOL);
+            fail();
+        } catch (IOException expected) {
+            assertTrue(pages.requested.isEmpty());
+        }
+    }
+
+    @Test
+    public void nothingIsSentForACanceledRequest() throws Exception {
+        Pages pages = new Pages().with(comment("c0", LINK));
+        pages.canceled = true;
+        try {
+            MoreComments.things(LINK, ids(1), pages, POOL);
+            fail();
+        } catch (CancellationException expected) {
+            assertTrue(pages.requested.isEmpty());
+        }
+    }
+
+    @Test
+    public void theParentsPageIsSkippedWhenEveryCommentIsFound() throws Exception {
+        Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p")));
+
+        assertEquals(Arrays.asList("a under t1_p"), rows(MoreComments.things(LINK, Arrays.asList("a"), pages, POOL)));
+        assertEquals(Arrays.asList("a"), pages.requested);
+    }
+
+    @Test
+    public void whenTheParentsPageFailsRepliesAreFetchedOneByOne() throws Exception {
+        Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p"), comment("b", "t1_p")));
+        pages.failing.add("p");
+
+        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("a", "b"), pages, POOL));
+
+        assertEquals(Arrays.asList("a under t1_p", "b under t1_p"), rows);
+        assertEquals(Arrays.asList("a", "p (parent)", "b"), pages.requested);
+    }
+
+    @Test
+    public void aGoneFirstCommentLetsTheNextOneTellTheParent() throws Exception {
+        Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p"), comment("b", "t1_p")));
+
+        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("gone", "a", "b"), pages, POOL));
+
+        assertEquals(Arrays.asList("a under t1_p", "b under t1_p"), rows);
+        assertEquals(Arrays.asList("gone", "a", "p (parent)"), pages.requested);
+    }
+
+    @Test
+    public void aCommentAlreadyInAnotherSubtreeIsAddedOnce() throws Exception {
+        Pages pages = new Pages().with(comment("x", LINK, comment("y", "t1_x")));
+
+        List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("x", "y"), pages, POOL));
+
+        assertEquals(Arrays.asList("x under t3_post", "y under t1_x"), rows);
+    }
+
+    @Test
+    public void onlyCommentsAndMoreBecomeRows() throws Exception {
+        JSONObject other = new JSONObject().put("kind", "t3").put("data", new JSONObject().put("id", "z"));
+        Pages pages = new Pages().with(comment("x", LINK, comment("y", "t1_x"), other));
+
+        assertEquals(Arrays.asList("x under t3_post", "y under t1_x"),
+                rows(MoreComments.things(LINK, Arrays.asList("x"), pages, POOL)));
+    }
+
+    @Test
     public void allCommentsGoneGivesNoThings() throws Exception {
         assertEquals(0, MoreComments.things(LINK, ids(3), new Pages(), POOL).length());
     }
@@ -196,7 +289,7 @@ public class MoreCommentsTest {
         assertEquals("t3_1xqnf50", form.get("link_id"));
         assertEquals(Arrays.asList("abc", "def"), MoreComments.ids(form.get("children")));
         assertEquals("top", MoreComments.sort(form.get("sort")));
-        assertEquals(Arrays.asList("abc", "def"), MoreComments.ids("abc,,def,abc,../x,DEF"));
+        assertEquals(Arrays.asList("abc", "def", "ghi"), MoreComments.ids("abc,,def,abc,../x,DEF,Ghi"));
         assertNull(MoreComments.sort("suggested"));
         assertNull(MoreComments.sort("top&limit=1"));
     }
