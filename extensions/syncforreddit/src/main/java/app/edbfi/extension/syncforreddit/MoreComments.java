@@ -170,6 +170,8 @@ public final class MoreComments {
                         if (wanted.contains(id) && !found.containsKey(id)) found.put(id, reply);
                     }
                 }
+            } catch (InterruptedException error) {
+                throw error;
             } catch (Exception error) {
                 Log.w(VolleyHook.TAG, "Parent comment failed, loading replies one by one", error);
             }
@@ -235,7 +237,7 @@ public final class MoreComments {
         Future<JSONObject> page = pool.submit(() -> source.comment(id, parent));
         try {
             return page.get(timeLeft, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException error) {
+        } catch (TimeoutException | InterruptedException error) {
             page.cancel(true);
             throw error;
         } catch (ExecutionException error) {

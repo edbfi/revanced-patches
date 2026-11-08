@@ -22,6 +22,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -49,8 +50,9 @@ public class MoreCommentsTest {
         // The budget Reddit reports once a parent's page is back, or -1 to keep it.
         volatile int budgetAfterParent = -1;
         volatile boolean canceled;
-        // How long every page takes.
+        // How long every page takes, and a parent's page.
         volatile long delayMs;
+        volatile long parentDelayMs;
 
         Pages with(JSONObject... things) throws JSONException {
             for (JSONObject thing : things) {
@@ -71,6 +73,7 @@ public class MoreCommentsTest {
             if (budgetAfterFirst >= 0) budget = budgetAfterFirst;
             if (parent && budgetAfterParent >= 0) budget = budgetAfterParent;
             if (delayMs > 0) Thread.sleep(delayMs);
+            if (parent && parentDelayMs > 0) Thread.sleep(parentDelayMs);
             if (failing.contains(id)) throw new IOException("Reddit returned 500");
             JSONObject comment = comments.get(id);
             // Fresh JSON for every page, as from the network.
@@ -327,6 +330,27 @@ public class MoreCommentsTest {
         } finally {
             assertTrue(System.currentTimeMillis() - start < 1_000);
         }
+    }
+
+    @Test
+    public void anInterruptWhileWaitingForTheParentsPageStopsTheAnswer() throws Exception {
+        final Pages pages = new Pages().with(comment("p", LINK, comment("a", "t1_p")), comment("b", "t1_p"));
+        final AtomicReference<Throwable> thrown = new AtomicReference<>();
+        Thread caller = new Thread(() -> {
+            try {
+                MoreComments.things(LINK, Arrays.asList("a", "b"), pages, POOL, TIMEOUT);
+            } catch (Throwable error) {
+                thrown.set(error);
+            }
+        });
+        pages.parentDelayMs = 2_000;
+        caller.start();
+        while (!pages.requested.contains("p (parent)")) Thread.sleep(10);
+        caller.interrupt();
+        caller.join(1_000);
+
+        assertTrue(thrown.get() instanceof InterruptedException);
+        assertEquals(Arrays.asList("a", "p (parent)"), pages.requested);
     }
 
     @Test
