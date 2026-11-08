@@ -35,6 +35,9 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 - `just check` runs what CI runs, prek hooks included; `just build` builds the bundle; `just patch <apk>` applies it to an APK with
   the pinned revanced-cli, into `tmp/out/`, signed with the main checkout's `tmp/test-signing.keystore` so every
   worktree's build installs over the last with `adb install -r` and keeps the app's data.
+- Gradle needs `githubPackagesUsername` and `githubPackagesPassword` (a classic PAT with only `read:packages`)
+  in `~/.gradle/gradle.properties`. Its daemon runs on JDK 25 (`gradle/gradle-daemon-jvm.properties`); point
+  `org.gradle.java.installations.paths` there at a JDK 25 that Gradle doesn't find by itself, such as Homebrew's.
 
 ## Test device
 
@@ -48,9 +51,6 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
   videos through downloaded files and logs.
 - Agents never type account credentials. The owner logs in through scrcpy; the agent then keeps the login by
   updating with `adb install -r`, never uninstalling.
-- Gradle needs `githubPackagesUsername` and `githubPackagesPassword` (a classic PAT with only `read:packages`)
-  in `~/.gradle/gradle.properties`. Its daemon runs on JDK 25 (`gradle/gradle-daemon-jvm.properties`); point
-  `org.gradle.java.installations.paths` there at a JDK 25 that Gradle doesn't find by itself, such as Homebrew's.
 
 ## rea
 
