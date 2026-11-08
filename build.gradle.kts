@@ -1,2 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Dependabot's Gradle updater needs a root build file. Extension modules add `android.library apply false`.
+// Dependabot's Gradle updater needs a root build file. The stub modules use the Android library plugin, which the
+// ReVanced plugin already brings; declaring it here puts it on one classpath for every module.
+plugins {
+    id("com.android.library") apply false
+}
