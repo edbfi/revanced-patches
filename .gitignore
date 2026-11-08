@@ -1,30 +1,46 @@
-# Compiled class file
-*.class
+# Gradle and Kotlin build state
+.gradle/
+build/
+.kotlin/
+local.properties
 
-# Log file
+# APKs, bundles and signing material never go in the repo
+*.apk
+*.apks
+*.xapk
+*.apkm
+*.rvp
+*.keystore
+*.jks
+
+# rea install (just setup-rea) and local tools (just patch)
+/.rea/node_modules/
+/.rea/*.jar
+/.tools/
+
+# Scratch space: reference checkouts, sample APKs, patched output
+/tmp/
+
+# Credentials and machine-local overrides
+.env
+.env.*
+
+# Logs, editor and OS state
 *.log
-
-# BlueJ files
-*.ctxt
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files #
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
-
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+*.swp
+*~
+.DS_Store
+/.idea/
+/.vscode/
 
-# Kotlin Gradle plugin data, see https://kotlinlang.org/docs/whatsnew20.html#new-directory-for-kotlin-data-in-gradle-projects
-.kotlin/
-
-# Temporary files
-tmp/
+# Shared agent config, tracked even where a global gitignore drops these folders.
+# Personal settings (.claude/settings.local.json) stay ignored.
+!/.claude/
+/.claude/*
+!/.claude/settings.json
+!/.claude/skills/
+!/.codex/
+/.codex/*
+!/.codex/config.toml
