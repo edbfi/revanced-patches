@@ -43,15 +43,18 @@ val fixVideoDownloadsPatch =
                     val branch = code.getOrNull(at + 3)
                     if (text?.methodReference?.name != "getTextContent" ||
                         textResult?.opcode != Opcode.MOVE_RESULT_OBJECT ||
-                        (textResult as OneRegisterInstruction).registerA == (text as FiveRegisterInstruction).registerC ||
                         code.getOrNull(at + 1)?.methodReference?.name != "contains" ||
                         result?.opcode != Opcode.MOVE_RESULT ||
                         branch?.opcode != branchOpcode ||
-                        branch.location.labels.isNotEmpty()
+                        branch.location.labels.isNotEmpty() ||
+                        // Nothing between getTextContent and the branch may overwrite the set's register.
+                        listOf(textResult, code[at], result).any {
+                            (it as OneRegisterInstruction).registerA == (text as FiveRegisterInstruction).registerC
+                        }
                     ) {
                         throw PatchException("The \"$literal\" check in ${method.name} has changed")
                     }
-                    Triple(at + 3, text.registerC, (result as OneRegisterInstruction).registerA)
+                    Triple(at + 3, (text as FiveRegisterInstruction).registerC, (result as OneRegisterInstruction).registerA)
                 }
             // Insert from the end so the earlier index stays valid.
             branches.sortedByDescending { it.first }.forEach { (branch, set, isAudio) ->
