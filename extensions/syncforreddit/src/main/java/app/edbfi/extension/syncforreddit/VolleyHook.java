@@ -17,6 +17,7 @@ public final class VolleyHook {
     public static NetworkResponse perform(Request<?> request) {
         String url = request.getUrl();
         if (Redgifs.isEnabled() && Redgifs.handles(url)) return Redgifs.answer(url);
+        if (MoreComments.isEnabled() && MoreComments.handles(url)) return MoreComments.answer(request);
         return null;
     }
 
