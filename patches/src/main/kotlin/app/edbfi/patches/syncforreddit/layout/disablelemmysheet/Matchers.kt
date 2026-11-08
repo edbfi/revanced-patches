@@ -25,6 +25,7 @@ internal fun BytecodePatchContext.lemmySheetButtonMethod() = uniqueMethod("the S
 internal fun BytecodePatchContext.mainActivityOnCreateMethod(sheet: String) = uniqueMethod("MainActivity.onCreate showing the Sync for Lemmy sheet") {
     definingClass(MAIN_ACTIVITY)
     name("onCreate")
+    returnType("V")
     parameterTypes("Landroid/os/Bundle;")
     instructions(type(sheet))
 }

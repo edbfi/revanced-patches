@@ -36,11 +36,16 @@ val disableLemmySheetPatch =
                     ?: throw PatchException("Expected one const-class $sheet in MainActivity.onCreate")
             val classRegister = (code[sheetClass] as OneRegisterInstruction).registerA
 
-            // The class goes to the show-sheet helper in the same straight-line code, before its register is reused.
-            // Removing that call leaves nothing else to undo.
+            // The class goes to the show-sheet helper in the same straight-line code: no branch in or out, and no write
+            // to its register in between. Removing that call leaves nothing else to undo.
             val shows =
                 (sheetClass + 1 until code.size)
-                    .takeWhile { i -> code[i].opcode.canContinue() && code[i] !is OffsetInstruction && !code[i].writes(classRegister) }
+                    .takeWhile { i ->
+                        code[i].location.labels.isEmpty() &&
+                            code[i].opcode.canContinue() &&
+                            code[i] !is OffsetInstruction &&
+                            !code[i].writes(classRegister)
+                    }
                     .filter { i ->
                         val reference = code[i].methodReference
                         code[i].opcode == Opcode.INVOKE_STATIC &&

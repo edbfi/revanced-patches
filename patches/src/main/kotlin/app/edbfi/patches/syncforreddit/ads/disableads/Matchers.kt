@@ -27,5 +27,6 @@ internal fun BytecodePatchContext.adsEnabledMethod() = uniqueMethod("the ads-ena
 internal fun BytecodePatchContext.adsInitProviderMethod() = uniqueMethod("MobileAdsInitProvider.attachInfo") {
     definingClass("Lcom/google/android/gms/ads/MobileAdsInitProvider;")
     name("attachInfo")
+    returnType("V")
     parameterTypes("Landroid/content/Context;", "Landroid/content/pm/ProviderInfo;")
 }
