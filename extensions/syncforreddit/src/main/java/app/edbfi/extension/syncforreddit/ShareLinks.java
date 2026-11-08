@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 package app.edbfi.extension.syncforreddit;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -9,7 +8,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.widget.Toast;
-import java.net.URI;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -26,8 +26,8 @@ public final class ShareLinks {
             Pattern.compile("^https://(?:[a-z]+\\.)?reddit\\.com/.*", Pattern.CASE_INSENSITIVE);
     private static final String LINK_HANDLER = "com.laurencedawson.reddit_sync.ui.activities.IntentActivity";
 
-    // A share link that failed to resolve, handed back to the app once so it is not resolved again.
-    private static String passThrough;
+    // Share links that failed to resolve, each handed back to the app once so it is not resolved again.
+    private static final Map<String, Integer> PASS_THROUGH = new HashMap<>();
 
     private ShareLinks() {}
 
@@ -35,14 +35,10 @@ public final class ShareLinks {
      * Called first by the app's link router. Returns true when it takes over the link: it then resolves the
      * redirect off the main thread and opens the result through the app's link handler.
      */
-    public static synchronized boolean open(Context context, String url, String userAgent) {
-        if (url == null || !isShareLink(url)) return false;
-        if (url.equals(passThrough)) {
-            passThrough = null;
-            return false;
-        }
+    public static boolean open(Context context, String url, String userAgent) {
+        if (url == null || !isShareLink(url) || takePassThrough(url)) return false;
+        // The caller may be an activity that finishes right away, so the result opens from the application.
         Context app = context.getApplicationContext();
-        boolean fromActivity = context instanceof Activity;
         new Thread(() -> {
             String target = null;
             try {
@@ -51,7 +47,7 @@ public final class ShareLinks {
                 Log.w(VolleyHook.TAG, "Could not resolve " + url, error);
             }
             String opened = target;
-            new Handler(Looper.getMainLooper()).post(() -> openInApp(fromActivity ? context : app, url, opened));
+            new Handler(Looper.getMainLooper()).post(() -> openInApp(app, url, opened));
         }, "edbfi-share-link").start();
         return true;
     }
@@ -60,13 +56,36 @@ public final class ShareLinks {
         return SHARE_LINK.matcher(url).matches();
     }
 
+    static synchronized void allowPassThrough(String url) {
+        Integer pending = PASS_THROUGH.get(url);
+        PASS_THROUGH.put(url, pending == null ? 1 : pending + 1);
+    }
+
+    static synchronized boolean takePassThrough(String url) {
+        Integer pending = PASS_THROUGH.get(url);
+        if (pending == null) return false;
+        if (pending == 1) PASS_THROUGH.remove(url);
+        else PASS_THROUGH.put(url, pending - 1);
+        return true;
+    }
+
     private static String resolve(String url, String userAgent) throws Exception {
+        String request = url.replaceFirst("(?i)^http:", "https:");
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", userAgent);
-        Http.Reply reply = Http.send("GET", url.replaceFirst("(?i)^http:", "https:"), headers, null, false);
-        String location = reply.header("Location");
-        if (reply.status / 100 != 3 || location == null) return null;
-        String target = URI.create(url).resolve(location).toString();
+        Http.Reply reply = Http.send("GET", request, headers, null, false);
+        return target(request, reply.status, reply.header("Location"));
+    }
+
+    /** The Reddit URL a share link's redirect points to, without tracking parameters, or null. */
+    static String target(String request, int status, String location) {
+        if (status / 100 != 3 || location == null) return null;
+        String target;
+        try {
+            target = new URL(new URL(request), location).toString();
+        } catch (MalformedURLException error) {
+            return null;
+        }
         return REDDIT_URL.matcher(target).matches() && !isShareLink(target) ? withoutTracking(target) : null;
     }
 
@@ -88,17 +107,16 @@ public final class ShareLinks {
         return kept.append(fragment).toString();
     }
 
-    private static void openInApp(Context context, String shareLink, String target) {
+    private static void openInApp(Context app, String shareLink, String target) {
         String url = target;
         if (url == null) {
-            Toast.makeText(context, "Could not open the share link", Toast.LENGTH_SHORT).show();
-            synchronized (ShareLinks.class) {
-                passThrough = shareLink;
-            }
+            Toast.makeText(app, "Could not open the share link", Toast.LENGTH_SHORT).show();
+            allowPassThrough(shareLink);
             url = shareLink;
         }
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).setClassName(context, LINK_HANDLER);
-        if (!(context instanceof Activity)) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        context.startActivity(intent);
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                .setClassName(app, LINK_HANDLER)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        app.startActivity(intent);
     }
 }

@@ -4,6 +4,11 @@ extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
     defaultConfig.minSdk = 23
 }
 
+// AGP's built-in Kotlin adds kotlin-stdlib to every Android module; this one is plain Java.
+configurations.configureEach {
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+}
+
 dependencies {
     compileOnly(project(":extensions:syncforreddit:stub"))
     testImplementation(libs.junit)

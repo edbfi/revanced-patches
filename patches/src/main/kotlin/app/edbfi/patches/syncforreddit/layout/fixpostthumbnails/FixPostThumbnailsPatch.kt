@@ -35,7 +35,9 @@ val fixPostThumbnailsPatch =
                 throw PatchException("The thumbnail is not read with JSONObject.optString")
             }
             val next = key + 3
-            if (code[next].location.labels.isNotEmpty()) throw PatchException("A branch enters after the thumbnail read")
+            if (code.getOrNull(next)?.location?.labels?.isEmpty() != true) {
+                throw PatchException("Nothing, or a branch target, follows the thumbnail read")
+            }
             val url = (result as OneRegisterInstruction).registerA
 
             // Listings escape & as &amp; in the URL. Decoding it here, as it is read, leaves titles and other text

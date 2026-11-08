@@ -3,6 +3,7 @@ package app.edbfi.extension.syncforreddit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -35,5 +36,36 @@ public class ShareLinksTest {
                 "https://www.reddit.com/r/pics/comments/abc123/_/def456/?context=3#top",
                 ShareLinks.withoutTracking("https://www.reddit.com/r/pics/comments/abc123/_/def456/?context=3&share_id=XyZ#top"));
         assertEquals("https://www.reddit.com/r/pics/", ShareLinks.withoutTracking("https://www.reddit.com/r/pics/"));
+    }
+
+    @Test
+    public void resolvesTheRedirectTarget() {
+        String share = "https://www.reddit.com/r/pics/s/AbC123xyz";
+        assertEquals("https://www.reddit.com/r/pics/comments/abc123/title/",
+                ShareLinks.target(share, 301, "https://www.reddit.com/r/pics/comments/abc123/title/?share_id=XyZ"));
+        assertEquals("https://www.reddit.com/r/pics/comments/abc123/title/",
+                ShareLinks.target(share, 307, "/r/pics/comments/abc123/title/"));
+    }
+
+    @Test
+    public void rejectsOtherRedirects() {
+        String share = "https://www.reddit.com/r/pics/s/AbC123xyz";
+        assertNull(ShareLinks.target(share, 200, null));
+        assertNull(ShareLinks.target(share, 302, "https://example.com/r/pics/"));
+        assertNull(ShareLinks.target(share, 302, "/r/pics/s/Other123"));
+    }
+
+    @Test
+    public void handsEachFailedLinkBackOnce() {
+        String a = "https://www.reddit.com/r/pics/s/FailA";
+        String b = "https://www.reddit.com/r/pics/s/FailB";
+        ShareLinks.allowPassThrough(a);
+        ShareLinks.allowPassThrough(b);
+        ShareLinks.allowPassThrough(a);
+        assertTrue(ShareLinks.takePassThrough(a));
+        assertTrue(ShareLinks.takePassThrough(b));
+        assertTrue(ShareLinks.takePassThrough(a));
+        assertFalse(ShareLinks.takePassThrough(a));
+        assertFalse(ShareLinks.takePassThrough(b));
     }
 }

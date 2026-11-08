@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 package app.edbfi.extension.syncforreddit;
 
+import android.util.Log;
 import com.android.volley.NetworkResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import org.json.JSONObject;
@@ -20,9 +22,19 @@ public final class Redgifs {
     // Temporary tokens last 24 hours; renew an hour early.
     private static final long TOKEN_LIFETIME_MS = 23L * 60 * 60 * 1000;
 
-    private static String token;
-    private static String address;
-    private static long expiresAt;
+    private static final class Session {
+        final String token;
+        final String address;
+        final long expiresAt;
+
+        Session(String token, String address, long expiresAt) {
+            this.token = token;
+            this.address = address;
+            this.expiresAt = expiresAt;
+        }
+    }
+
+    private static Session session;
 
     private Redgifs() {}
 
@@ -35,21 +47,27 @@ public final class Redgifs {
         return url != null && (url.startsWith(TOKEN_URL) || url.startsWith(ADDRESS_URL) || url.startsWith(GIF_URL));
     }
 
-    static NetworkResponse perform(String url) throws Exception {
-        if (url.startsWith(TOKEN_URL)) return json(new JSONObject().put("access_token", token(false)));
-        if (url.startsWith(ADDRESS_URL)) {
-            token(false);
-            return json(new JSONObject().put("remote-addr", address));
+    /**
+     * Never returns null: the app's own requests would send Redgifs its client credentials and the User-Agent it
+     * sends to Reddit. A failure becomes an error response, which the app reports as a failed load.
+     */
+    static NetworkResponse answer(String url) {
+        try {
+            if (url.startsWith(TOKEN_URL)) return json(new JSONObject().put("access_token", session(false).token));
+            if (url.startsWith(ADDRESS_URL)) return json(new JSONObject().put("remote-addr", session(false).address));
+            String id = gifId(url);
+            if (id == null) return failure();
+            Http.Reply reply = Http.send("GET", GIF_URL + id, headers(session(false).token), null, true);
+            // A token is bound to the User-Agent it was issued for and may have been revoked early.
+            if (reply.status == 401) reply = Http.send("GET", GIF_URL + id, headers(session(true).token), null, true);
+            return VolleyHook.response(reply);
+        } catch (Exception error) {
+            Log.w(VolleyHook.TAG, "Redgifs request failed: " + url, error);
+            return failure();
         }
-        String id = gifId(url);
-        if (id == null) return null;
-        Http.Reply reply = Http.send("GET", GIF_URL + id, headers(token(false)), null, true);
-        // A token is bound to the User-Agent it was issued for and may have been revoked early.
-        if (reply.status == 401) reply = Http.send("GET", GIF_URL + id, headers(token(true)), null, true);
-        return VolleyHook.response(reply);
     }
 
-    /** The gif ID from the app's {@code /v2/gifs/<id>?user-addr=…} URL, or null. */
+    /** The gif ID from the app's {@code /v2/gifs/<id>?user-addr=…} URL, lowercased as Redgifs requires, or null. */
     static String gifId(String url) {
         if (url == null || !url.startsWith(GIF_URL)) return null;
         String rest = url.substring(GIF_URL.length());
@@ -59,19 +77,19 @@ public final class Redgifs {
             if (at >= 0 && at < end) end = at;
         }
         String id = rest.substring(0, end);
-        return id.matches("[A-Za-z0-9]+") ? id : null;
+        // The app keeps the case of IDs it takes from media URLs (BothPrivatePigeon-mobile.mp4); the API answers 404.
+        return id.matches("[A-Za-z0-9]+") ? id.toLowerCase(Locale.ROOT) : null;
     }
 
-    private static synchronized String token(boolean renew) throws Exception {
-        if (renew || token == null || System.currentTimeMillis() >= expiresAt) {
+    private static synchronized Session session(boolean renew) throws Exception {
+        if (renew || session == null || System.currentTimeMillis() >= session.expiresAt) {
             Http.Reply reply = Http.send("GET", API + "/v2/auth/temporary", headers(null), null, true);
             if (reply.status != 200) throw new IllegalStateException("Redgifs token request returned " + reply.status);
             JSONObject body = new JSONObject(new String(reply.body, StandardCharsets.UTF_8));
-            token = body.getString("token");
-            address = body.optString("addr", "");
-            expiresAt = System.currentTimeMillis() + TOKEN_LIFETIME_MS;
+            session = new Session(
+                    body.getString("token"), body.optString("addr", ""), System.currentTimeMillis() + TOKEN_LIFETIME_MS);
         }
-        return token;
+        return session;
     }
 
     // Redgifs gets the system's own User-Agent, never the one the app sends to Reddit.
@@ -84,8 +102,16 @@ public final class Redgifs {
     }
 
     private static NetworkResponse json(JSONObject body) {
+        return reply(200, body.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static NetworkResponse failure() {
+        return reply(502, new byte[0]);
+    }
+
+    private static NetworkResponse reply(int status, byte[] body) {
         Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         headers.put("Content-Type", "application/json");
-        return VolleyHook.response(new Http.Reply(200, body.toString().getBytes(StandardCharsets.UTF_8), headers));
+        return VolleyHook.response(new Http.Reply(status, body, headers));
     }
 }

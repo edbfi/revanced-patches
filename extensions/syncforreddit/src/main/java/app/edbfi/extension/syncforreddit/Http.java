@@ -13,7 +13,7 @@ import java.util.TreeMap;
 
 /** Plain HTTP requests on the calling thread, outside the app's own client and its Reddit headers. */
 final class Http {
-    private static final int TIMEOUT_MS = 15_000;
+    private static final int TIMEOUT_MS = 10_000;
 
     static final class Reply {
         final int status;
