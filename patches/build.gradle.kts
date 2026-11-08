@@ -19,9 +19,10 @@ patches {
     }
 }
 
-java {
-    // The plugin sets only the target; without this, Java sources would compile as the daemon's JDK 25.
-    sourceCompatibility = JavaVersion.VERSION_17
+// The plugin sets only the bytecode target; --release 17 also holds Java sources to Java 17's language
+// and library, which is what ReVanced Manager and the CLI run on.
+tasks.withType<JavaCompile>().configureEach {
+    options.release = 17
 }
 
 kotlin {
