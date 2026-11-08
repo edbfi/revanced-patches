@@ -50,12 +50,22 @@ public final class MoreComments {
     private static final int THREADS = 4;
     // The app's Reddit requests share 3 network threads with this one: keep each answer short.
     private static final int PAGE_TIMEOUT_MS = 5_000;
-    private static final long PAGES_DEADLINE_MS = 15_000;
+    private static final long ANSWER_DEADLINE_MS = 15_000;
 
     private static ExecutorService pool;
-    // From the last comment page: X-Ratelimit-Remaining (-1 before the first) and when that window ends.
-    private static volatile int remaining = -1;
-    private static volatile long windowEnd;
+    // From the last comment page that had them, or null before the first.
+    private static volatile RateLimit rateLimit;
+
+    /** Reddit's X-Ratelimit-Remaining and the time its window ends. */
+    private static final class RateLimit {
+        final int remaining;
+        final long windowEnd;
+
+        RateLimit(int remaining, long windowEnd) {
+            this.remaining = remaining;
+            this.windowEnd = windowEnd;
+        }
+    }
 
     /** Where comments come from: Reddit in the app, fixtures in tests. */
     interface Source {
@@ -87,7 +97,7 @@ public final class MoreComments {
      * Never returns null: the app's own request would only get Reddit's 403. A failure becomes an error response,
      * after which the app leaves the "View more" row as it was.
      */
-    static NetworkResponse answer(final Request<?> request) {
+    static NetworkResponse answer(Request<?> request) {
         try {
             Map<String, String> form = form(request.getBody());
             String link = form.get("link_id");
@@ -96,12 +106,7 @@ public final class MoreComments {
             if (link == null || !link.matches("t3_[a-z0-9]+") || ids.isEmpty()) {
                 throw new IllegalArgumentException("Unexpected request body: " + form);
             }
-            Source reddit = new Reddit(link.substring(3), sort(form.get("sort")), request.getHeaders()) {
-                @Override
-                public boolean canceled() {
-                    return request.isCanceled();
-                }
-            };
+            Source reddit = new Reddit(link.substring(3), sort(form.get("sort")), request.getHeaders(), request);
             JSONArray things = things(link, ids, reddit, pool());
             JSONObject body = new JSONObject().put("json", new JSONObject().put("errors", new JSONArray())
                     .put("data", new JSONObject().put("things", things)));
@@ -121,11 +126,12 @@ public final class MoreComments {
     /**
      * The things to answer with, in the requested order. The first comment Reddit still has tells whose replies they
      * are; if they are a comment's, one page of that comment usually holds them all. The others are fetched one by
-     * one, at most {@link #BATCH} pages in all and fewer when Reddit's rate limit runs low; the rest come back as a
-     * "more" thing. Comments Reddit no longer has are left out.
+     * one, at most {@link #BATCH} pages in all, fewer when Reddit's rate limit runs low, and none started after the
+     * answer's deadline; the rest come back as a "more" thing. Comments Reddit no longer has are left out.
      */
     static JSONArray things(String link, List<String> ids, final Source source, ExecutorService pool)
             throws Exception {
+        long deadline = System.currentTimeMillis() + ANSWER_DEADLINE_MS;
         if (source.budget() <= 0) throw new IOException("Reddit's rate limit is used up");
         int limit = Math.min(BATCH, source.budget());
         Map<String, JSONObject> found = new HashMap<>();
@@ -134,10 +140,12 @@ public final class MoreComments {
         String parent = null;
         // A failure here fails the whole answer: nothing could be loaded.
         for (String id : ids) {
-            if (sent >= limit) break;
+            if (sent >= limit || System.currentTimeMillis() >= deadline) break;
             checkCanceled(source);
             JSONObject comment = source.comment(id, false);
             sent++;
+            // Each page tells how much of the rate limit is left.
+            limit = Math.min(limit, sent + Math.max(0, source.budget()));
             if (comment == null) {
                 gone.add(id);
                 continue;
@@ -146,10 +154,8 @@ public final class MoreComments {
             parent = comment.getJSONObject("data").getString("parent_id");
             break;
         }
-        // The first page tells how much of the rate limit is left.
-        limit = Math.min(limit, sent + Math.max(0, source.budget()));
-
-        if (parent != null && parent.startsWith("t1_") && sent < limit && found.size() + gone.size() < ids.size()) {
+        if (parent != null && parent.startsWith("t1_") && sent < limit && found.size() + gone.size() < ids.size()
+                && System.currentTimeMillis() < deadline) {
             checkCanceled(source);
             sent++;
             try {
@@ -172,7 +178,8 @@ public final class MoreComments {
             if (sent + rest.size() >= limit) break;
             if (!found.containsKey(id) && !gone.contains(id)) rest.add(id);
         }
-        if (!rest.isEmpty()) {
+        long timeLeft = deadline - System.currentTimeMillis();
+        if (!rest.isEmpty() && timeLeft > 0) {
             checkCanceled(source);
             List<Callable<JSONObject>> fetches = new ArrayList<>();
             for (final String id : rest) {
@@ -182,15 +189,18 @@ public final class MoreComments {
                 });
             }
             // Pages not back by the deadline are canceled and come back in the "more" thing.
-            List<Future<JSONObject>> results = pool.invokeAll(fetches, PAGES_DEADLINE_MS, TimeUnit.MILLISECONDS);
+            List<Future<JSONObject>> results = pool.invokeAll(fetches, timeLeft, TimeUnit.MILLISECONDS);
+            checkCanceled(source);
             for (int i = 0; i < rest.size(); i++) {
                 try {
                     JSONObject comment = results.get(i).get();
                     if (comment == null) gone.add(rest.get(i));
                     else found.put(rest.get(i), comment);
-                } catch (ExecutionException | CancellationException error) {
+                } catch (ExecutionException error) {
                     // Left for the next tap.
                     Log.w(VolleyHook.TAG, "Comment " + rest.get(i) + " failed", error.getCause());
+                } catch (CancellationException error) {
+                    // Past the deadline: left for the next tap.
                 }
             }
         }
@@ -201,7 +211,7 @@ public final class MoreComments {
         for (String id : ids) {
             JSONObject comment = found.get(id);
             if (comment != null) flatten(comment, things, added);
-            else if (!gone.contains(id)) left.add(id);
+            else if (!gone.contains(id) && !added.contains(id)) left.add(id);
         }
         // With no comment found, the parent is unknown; the post works as well, as the app takes the new row's level
         // from the tapped one when its parent isn't in the list, and the next tap reads the parent again.
@@ -224,18 +234,28 @@ public final class MoreComments {
 
     /**
      * Adds the comment or "more" thing and, after it, every reply below it, emptying each comment's {@code replies}.
-     * Skips things already added and any other kind: the app moves the rows below by the list's length, so every
-     * thing in it must become exactly one row.
+     * Skips things already added, by the row ID the app gives them, and any other kind: the app moves the rows below
+     * by the list's length, so every thing in it must become exactly one row.
      */
     static void flatten(JSONObject thing, JSONArray out, Set<String> added) throws JSONException {
         String kind = thing.optString("kind");
         if (!"t1".equals(kind) && !"more".equals(kind)) return;
-        if (!added.add(kind + ":" + thing.getJSONObject("data").optString("id"))) return;
+        if (!added.add(rowId(kind, thing.getJSONObject("data")))) return;
         out.put(thing);
         if (!"t1".equals(kind)) return;
         List<JSONObject> replies = replies(thing);
         thing.getJSONObject("data").put("replies", "");
         for (JSONObject reply : replies) flatten(reply, out, added);
+    }
+
+    /**
+     * The app's row ID: a comment's own ID, and {@code more_<id>} for a "more", or {@code more_<parent>} for the
+     * "Continue thread" ones, which all have the ID {@code _}.
+     */
+    private static String rowId(String kind, JSONObject data) {
+        String id = data.optString("id");
+        if ("t1".equals(kind)) return id;
+        return "more_" + ("_".equals(id) ? data.optString("parent_id") : id);
     }
 
     private static List<JSONObject> replies(JSONObject comment) throws JSONException {
@@ -307,15 +327,22 @@ public final class MoreComments {
     }
 
     /** Comment pages from Reddit, sent with the app's own token and User-Agent. */
-    private abstract static class Reddit implements Source {
+    private static final class Reddit implements Source {
         private final String post;
         private final String sort;
         private final Map<String, String> headers;
+        private final Request<?> request;
 
-        Reddit(String post, String sort, Map<String, String> headers) {
+        Reddit(String post, String sort, Map<String, String> headers, Request<?> request) {
             this.post = post;
             this.sort = sort;
             this.headers = headers;
+            this.request = request;
+        }
+
+        @Override
+        public boolean canceled() {
+            return request.isCanceled();
         }
 
         @Override
@@ -330,8 +357,9 @@ public final class MoreComments {
 
         @Override
         public int budget() {
-            if (remaining < 0 || System.currentTimeMillis() >= windowEnd) return BATCH;
-            return remaining - RESERVE;
+            RateLimit last = rateLimit;
+            if (last == null || System.currentTimeMillis() >= last.windowEnd) return BATCH;
+            return last.remaining - RESERVE;
         }
 
         private static void readRateLimit(Http.Reply reply) {
@@ -339,10 +367,8 @@ public final class MoreComments {
             String reset = reply.header("X-Ratelimit-Reset");
             if (left == null || reset == null) return;
             try {
-                int count = (int) Double.parseDouble(left);
-                long end = System.currentTimeMillis() + (long) (Double.parseDouble(reset) * 1000);
-                windowEnd = end;
-                remaining = count;
+                rateLimit = new RateLimit((int) Double.parseDouble(left),
+                        System.currentTimeMillis() + (long) (Double.parseDouble(reset) * 1000));
             } catch (NumberFormatException ignored) {
                 // Keep the last reading.
             }

@@ -94,6 +94,12 @@ public class MoreCommentsTest {
         return new JSONObject().put("kind", "t1").put("data", data);
     }
 
+    /** Reddit's "continue this thread" node, which has no children and the ID {@code _}. */
+    private static JSONObject continueThread(String parent) throws JSONException {
+        return new JSONObject().put("kind", "more").put("data", new JSONObject().put("id", "_")
+                .put("parent_id", parent).put("count", 0).put("children", new JSONArray()));
+    }
+
     /** One line per thing, checking on the way that no comment still nests its replies. */
     private static List<String> rows(JSONArray things) throws JSONException {
         List<String> rows = new ArrayList<>();
@@ -249,6 +255,35 @@ public class MoreCommentsTest {
         List<String> rows = rows(MoreComments.things(LINK, Arrays.asList("x", "y"), pages, POOL));
 
         assertEquals(Arrays.asList("x under t3_post", "y under t1_x"), rows);
+    }
+
+    @Test
+    public void everyContinueThreadRowIsKept() throws Exception {
+        Pages pages = new Pages().with(comment("x", LINK, comment("x1", "t1_x", continueThread("t1_x1")),
+                comment("x2", "t1_x", continueThread("t1_x2"))));
+
+        assertEquals(Arrays.asList("x under t3_post", "x1 under t1_x", "more  under t1_x1", "x2 under t1_x",
+                "more  under t1_x2"), rows(MoreComments.things(LINK, Arrays.asList("x"), pages, POOL)));
+    }
+
+    @Test
+    public void goneCommentsDoNotGetPastTheBudget() throws Exception {
+        Pages pages = new Pages();
+        pages.budgetAfterFirst = 0;
+
+        List<String> rows = rows(MoreComments.things(LINK, ids(5), pages, POOL));
+
+        assertEquals(Arrays.asList("c0"), pages.requested);
+        assertEquals(Arrays.asList("more c1,c2,c3,c4 under t3_post"), rows);
+    }
+
+    @Test
+    public void aCommentAlreadyInASubtreeIsNotLeftForLater() throws Exception {
+        Pages pages = new Pages().with(comment("x", LINK, comment("y", "t1_x")));
+        pages.budget = 1;
+
+        assertEquals(Arrays.asList("x under t3_post", "y under t1_x"),
+                rows(MoreComments.things(LINK, Arrays.asList("x", "y"), pages, POOL)));
     }
 
     @Test
