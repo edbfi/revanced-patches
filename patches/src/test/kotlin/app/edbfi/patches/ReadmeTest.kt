@@ -21,23 +21,43 @@ class ReadmeTest {
 
     private data class Row(val name: String, val description: String, val default: Boolean)
 
-    /** Rows of the first table after [heading], cells trimmed, header and separator dropped. */
-    private fun table(heading: String, from: Int = 0): List<List<String>> {
-        val start = readme.drop(from).indexOf(heading).takeIf { it >= 0 }?.plus(from) ?: fail("README has no \"$heading\"")
-        return readme.drop(start + 1)
+    /**
+     * Rows of the first table after the line [heading], within [lines], cells trimmed, header and separator dropped.
+     * Cells are split on " | ", so no cell may hold a pipe.
+     */
+    private fun table(heading: String, lines: List<String> = readme, cells: Int): List<List<String>> {
+        val start = lines.indexOf(heading).takeIf { it >= 0 } ?: fail("README has no \"$heading\" where expected")
+        return lines.drop(start + 1)
             .dropWhile { !it.startsWith("|") }
             .takeWhile { it.startsWith("|") }
             .drop(2)
-            .map { line -> line.trim().removePrefix("|").removeSuffix("|").split(" | ").map { it.trim() } }
+            .map { line ->
+                line.trim().removePrefix("|").removeSuffix("|").split(" | ").map { it.trim() }
+                    .takeIf { it.size == cells } ?: fail("README table row under \"$heading\" needs $cells cells: $line")
+            }
     }
 
     private fun code(cell: String) = Regex("`([^`]+)`").findAll(cell).map { it.groupValues[1] }.toSet()
 
+    /** GitHub's anchor for a heading: lowercase, punctuation other than '-' dropped, spaces as '-'. */
+    private fun anchor(heading: String) = heading.lowercase().filter { it.isLetterOrDigit() || it == ' ' || it == '-' }.replace(' ', '-')
+
     private val apps =
-        table("## Supported apps").map { (app, pkg, versions) ->
-            val name = Regex("""^\[(.+)]\(#[a-z0-9-]+\)$""").find(app)?.groupValues?.get(1) ?: fail("Not an app link: $app")
-            App(name, code(pkg).single(), code(versions))
+        table("## Supported apps", cells = 3).map { (app, pkg, versions) ->
+            val link = Regex("""^\[(.+)]\(#(.+)\)$""").find(app) ?: fail("Not a link to the app's section: $app")
+            val (name, target) = link.destructured
+            if (target != anchor(name)) fail("The link to $name goes to #$target, but its heading's anchor is #${anchor(name)}")
+            App(name, code(pkg).singleOrNull() ?: fail("Package cell needs one `package`: $pkg"), code(versions))
         }
+
+    /** The lines of the app's `### <name>` section, up to the next heading of that level or higher. */
+    private fun section(app: App): List<String> {
+        val start = readme.indexOf("### ${app.name}").takeIf { it >= 0 } ?: fail("README has no \"### ${app.name}\"")
+        val end = readme.drop(start + 1).indexOfFirst { it.startsWith("## ") || it.startsWith("### ") }
+        return readme.subList(start, if (end < 0) readme.size else start + 1 + end)
+    }
+
+    private fun patchesOf(app: App) = patches.filter { patch -> patch.compatiblePackages.orEmpty().any { it.first == app.pkg } }
 
     @Test
     fun `the apps table lists every app with the versions its patches were tested on`() {
@@ -52,23 +72,19 @@ class ReadmeTest {
     @Test
     fun `each app's patch table matches its patches`() {
         for (app in apps) {
-            val section = readme.indexOf("### ${app.name}").takeIf { it >= 0 } ?: fail("README has no \"### ${app.name}\"")
             val rows =
-                table("#### Patches", section).map { (name, description, default) ->
+                table("#### Patches", section(app), cells = 3).map { (name, description, default) ->
                     Row(
                         name,
                         description,
                         when (default) {
                             "On" -> true
                             "Off" -> false
-                            else -> fail("Default must be On or Off: $default")
+                            else -> fail("${app.name}: Default must be On or Off, not \"$default\" ($name)")
                         },
                     )
                 }
-            val bundle =
-                patches
-                    .filter { patch -> patch.name != null && patch.compatiblePackages.orEmpty().any { it.first == app.pkg } }
-                    .map { Row(it.name!!, it.description.orEmpty(), it.use) }
+            val bundle = patchesOf(app).filter { it.name != null }.map { Row(it.name!!, it.description.orEmpty(), it.use) }
             assertEquals(bundle.size, rows.size, "${app.name}: one README row per patch")
             assertEquals(bundle.toSet(), rows.toSet(), "${app.name}: README patch table")
         }
@@ -77,15 +93,9 @@ class ReadmeTest {
     @Test
     fun `each app's options are named in its section`() {
         for (app in apps) {
-            val section = readme.indexOf("### ${app.name}")
-            val end = readme.drop(section + 1).indexOfFirst { it.startsWith("## ") || it.startsWith("### ") }
-            val text = readme.subList(section, if (end < 0) readme.size else section + 1 + end).joinToString("\n")
-            val options =
-                patches
-                    .filter { patch -> patch.compatiblePackages.orEmpty().any { it.first == app.pkg } }
-                    .flatMap { it.options.values.map { option -> option.name } }
-            val missing = options.filter { "`$it`" !in text }
-            assertTrue(missing.isEmpty(), "${app.name}: options not named in the README: $missing")
+            val text = section(app).joinToString("\n")
+            val missing = patchesOf(app).flatMap { it.options.values.map { option -> option.name } }.filter { "`$it`" !in text }
+            assertTrue(missing.isEmpty(), "${app.name}: options not named in backticks in the README: $missing")
         }
     }
 }
