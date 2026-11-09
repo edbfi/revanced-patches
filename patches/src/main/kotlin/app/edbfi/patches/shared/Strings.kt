@@ -39,8 +39,8 @@ internal fun MutableMethod.rewriteStrings(transform: (String) -> String?): Edit 
     return Edit(indices.size) {
         for (index in indices) {
             val instruction = getInstruction<Instruction>(index)
-            // Only a rewrite of the same literal applied first, in the wrong order, can get here.
-            val new = instruction.rewritten(transform) ?: throw PatchException("The literal at $index in $name changed before its rewrite")
+            // Another edit to this method ran first, against the order above.
+            val new = instruction.rewritten(transform) ?: throw PatchException("Instruction $index in $name no longer holds the literal to rewrite")
             val register = (instruction as OneRegisterInstruction).registerA
             replaceInstruction(index, constString(register, new, jumbo = instruction.opcode == Opcode.CONST_STRING_JUMBO))
         }
