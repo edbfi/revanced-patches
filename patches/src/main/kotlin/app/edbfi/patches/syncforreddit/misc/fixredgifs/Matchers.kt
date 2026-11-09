@@ -4,6 +4,8 @@ package app.edbfi.patches.syncforreddit.misc.fixredgifs
 import app.edbfi.patches.shared.isDeclaredIn
 import app.edbfi.patches.shared.uniqueMethod
 import app.revanced.patcher.custom
+import app.revanced.patcher.name
+import app.revanced.patcher.parameterTypes
 import app.revanced.patcher.patch.BytecodePatchContext
 
 /** The three Volley requests the app makes to Redgifs, in order, and the URL each holds. */
@@ -21,4 +23,18 @@ internal fun BytecodePatchContext.checkRedgifsRequests() {
             custom { isDeclaredIn(this, sourceFile) }
         }
     }
+}
+
+/** Fails unless Enhanced autoplay still plays Redgifs through the URL the extension resolves. */
+internal fun BytecodePatchContext.checkAutoplayUrl() {
+    uniqueMethod("Enhanced autoplay's Redgifs URL", "https://ap.syncforreddit.com/image?url=redgifs-") {
+        custom { isDeclaredIn(this, "SimpleExoPlayerTextureView.java") }
+    }
+}
+
+/** `ExoplayerFactorySingleton`'s constructor builds the video sources every player in the app reads from. */
+internal fun BytecodePatchContext.videoSourcesMethod() = uniqueMethod("the video sources in ExoplayerFactorySingleton") {
+    name("<init>")
+    parameterTypes()
+    custom { isDeclaredIn(this, "ExoplayerFactorySingleton.java") }
 }

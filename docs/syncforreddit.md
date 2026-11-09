@@ -16,7 +16,9 @@ Patches for Sync for Reddit. To install them, see the [README](../README.md#inst
 | Disable ads | Removes ads and the ad consent form, and keeps the ad SDKs from starting. | On |
 | Disable Sync for Lemmy bottom sheet | Removes the Sync for Lemmy promotion that shows at every start. | On |
 | Fix /s/ links | Opens Reddit share links (/s/) as the post they point to, from the app and from other apps. | On |
-| Fix Redgifs | Fixes Redgifs videos not loading. | On |
+| Fix Redgifs | Fixes Redgifs videos not loading, Enhanced autoplay's included. | On |
+| Fix Tenor previews | Fixes previews of Tenor links in comments and posts staying blank. | On |
+| Hide Gfycat link previews | Hides the blank previews of Gfycat links in comments and posts. Gfycat shut down in 2023. | On |
 | Fix post thumbnails | Fixes post thumbnails not loading. | On |
 | Fix video downloads | Fixes downloaded Reddit videos having only audio. | On |
 | Fix View more comments | Fixes "View more" not loading further comments. | On |
@@ -36,8 +38,6 @@ Patches for Sync for Reddit. To install them, see the [README](../README.md#inst
 
 ## Known issues
 
-- **Previews of Tenor, Gfycat and other website links in comments and posts stay blank.** They came from Sync's own
-  image server, which no longer answers. Without Sync Ultra, Sync never showed website previews.
-- **Enhanced autoplay doesn't play Redgifs or Gfycat videos.** It plays them through Sync's image server too. Leave it off (the
-  default).
+- **Website previews in comments and posts stay blank.** They came from Sync's own image server, which refuses links
+  it hasn't cached. Without Sync Ultra, Sync never showed them.
 - **"Other discussions" can miss a post of the same link, or show a post of a different one.** It searches Reddit for the link.

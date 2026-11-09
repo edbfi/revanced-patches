@@ -2,6 +2,7 @@
 package app.edbfi.extension.syncforreddit;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -25,7 +26,7 @@ public class ImageServerTest {
 
     private static IOException failure(String url, boolean imgur, Imgur.Api api) {
         try {
-            ImageServer.thumbnailUrl(url, imgur, api);
+            ImageServer.thumbnailUrl(url, imgur ? api : null, null);
         } catch (IOException expected) {
             return expected;
         }
@@ -37,7 +38,7 @@ public class ImageServerTest {
     public void loadsAnAlbumPreviewFromImgur() throws IOException {
         List<String> asked = new ArrayList<>();
         Imgur.Api api = answering(200, "{\"data\":{\"cover\":\"CoVeR12\"}}", asked);
-        assertEquals("https://i.imgur.com/CoVeR12m.jpg", ImageServer.thumbnailUrl(ALBUM + "SrvAlb1", true, api));
+        assertEquals("https://i.imgur.com/CoVeR12m.jpg", ImageServer.thumbnailUrl(ALBUM + "SrvAlb1", api, null));
         assertEquals(1, asked.size());
     }
 
@@ -48,6 +49,26 @@ public class ImageServerTest {
         failure("https://ap.syncforreddit.com/image?url=https://tenor.com/view/x-gif-1", true, api);
         failure("https://ap.syncforreddit.com/image?url=gfycat-x", true, api);
         assertTrue(asked.isEmpty());
+    }
+
+    @Test
+    public void loadsATenorPreviewFromTenor() throws IOException {
+        List<String> asked = new ArrayList<>();
+        Tenor.Api tenor = (method, url) -> {
+            asked.add(url);
+            String body = "{\"thumbnail_url\":\"https://media.tenor.com/AbCdAAAAN/x.png\"}";
+            return new Http.Reply(200, body.getBytes(StandardCharsets.UTF_8), new HashMap<>());
+        };
+        String preview = "https://ap.syncforreddit.com/image?url=https://tenor.com/view/x-gif-1";
+        assertEquals("https://media.tenor.com/AbCdAAAAN/x.png", ImageServer.thumbnailUrl(preview, null, tenor));
+        assertEquals(1, asked.size());
+        // Without Fix Tenor previews, it fails as before.
+        try {
+            ImageServer.thumbnailUrl(preview, null, null);
+            fail("Expected an IOException");
+        } catch (IOException expected) {
+            assertEquals(1, asked.size());
+        }
     }
 
     @Test
@@ -68,5 +89,18 @@ public class ImageServerTest {
         assertTrue(failure(ALBUM + "SrvAlb5", true, (m, p, b, c) -> {
             throw new IOException("offline");
         }).getCause() instanceof IOException);
+    }
+
+    @Test
+    public void remembersOnlyAnswers() {
+        List<String> asked = new ArrayList<>();
+        // Imgur had no album: remembered.
+        assertTrue(ImageServer.worthRemembering(failure(ALBUM + "SrvAlb6", true, answering(404, "", asked))));
+        // Offline: tried again next time.
+        assertFalse(ImageServer.worthRemembering(failure(ALBUM + "SrvAlb7", true, (m, p, b, c) -> {
+            throw new IOException("offline");
+        })));
+        // Nothing handles it: costs nothing to fail again.
+        assertFalse(ImageServer.worthRemembering(failure("https://ap.syncforreddit.com/image?url=gfycat-x", true, answering(200, "{}", asked))));
     }
 }
