@@ -8,7 +8,7 @@
 
 | App | Package | Patches |
 | --- | --- | --- |
-| [Sync for Reddit](docs/syncforreddit.md) | `com.laurencedawson.reddit_sync` | 12 |
+| [Sync for Reddit](docs/syncforreddit.md) | `com.laurencedawson.reddit_sync` | 14 |
 
 Each app's page lists its patches, their options and known issues, and the app version they were tested on. Patch
 that version: ReVanced Manager and the CLI skip these patches on other versions unless you force them, and other

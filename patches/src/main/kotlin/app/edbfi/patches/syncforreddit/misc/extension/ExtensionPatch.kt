@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 package app.edbfi.patches.syncforreddit.misc.extension
 
+import app.edbfi.patches.shared.Edit
 import app.edbfi.patches.shared.uniqueMethod
 import app.revanced.patcher.definingClass
 import app.revanced.patcher.extensions.addInstructions
@@ -18,17 +19,27 @@ internal val extensionPatch =
         extendWith("extensions/syncforreddit.rve")
     }
 
-/** Makes the extension class's `isEnabled()`, false as built, return true. */
-internal fun BytecodePatchContext.enableInExtension(className: String) {
-    uniqueMethod("$className.isEnabled in the extension") {
-        definingClass("$EXTENSION/$className;")
-        name("isEnabled")
-        returnType("Z")
-    }.addInstructions(
-        0,
-        """
-            const/4 v0, 0x1
-            return v0
-        """,
-    )
+/**
+ * Makes the extension class's `isEnabled()`, false as built, return true once applied. Look it up with the rest of a
+ * patch's checks, before its first change.
+ */
+internal fun BytecodePatchContext.extensionSwitch(className: String): Edit {
+    val method =
+        uniqueMethod("$className.isEnabled in the extension") {
+            definingClass("$EXTENSION/$className;")
+            name("isEnabled")
+            returnType("Z")
+        }
+    return Edit(1) {
+        method.addInstructions(
+            0,
+            """
+                const/4 v0, 0x1
+                return v0
+            """,
+        )
+    }
 }
+
+/** Turns the extension class on, for a patch whose only change this is or whose other changes are already made. */
+internal fun BytecodePatchContext.enableInExtension(className: String) = extensionSwitch(className).apply()

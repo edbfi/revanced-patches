@@ -5,7 +5,7 @@ import app.edbfi.patches.shared.returnString
 import app.edbfi.patches.syncforreddit.SYNC_PACKAGE
 import app.edbfi.patches.syncforreddit.SYNC_VERSION
 import app.edbfi.patches.syncforreddit.misc.extension.EXTENSION
-import app.edbfi.patches.syncforreddit.misc.extension.enableInExtension
+import app.edbfi.patches.syncforreddit.misc.extension.extensionSwitch
 import app.edbfi.patches.syncforreddit.misc.imageclient.imageClientHookPatch
 import app.edbfi.patches.syncforreddit.misc.volley.volleyHookPatch
 import app.revanced.patcher.extensions.addInstructions
@@ -37,6 +37,7 @@ val fixImgurPatch =
             // Newer Imgur links put a title before the ID (/a/funny-cat-AbC1234), which the app would cut to "funny".
             val idMethod = imgurIdMethod()
             if (idMethod.implementation!!.registerCount > 16) throw PatchException("${idMethod.name} has too many registers")
+            val enable = extensionSwitch("Imgur")
 
             clientIdMethod().returnString(clientId!!).apply()
             idMethod.addInstructions(
@@ -46,6 +47,6 @@ val fixImgurPatch =
                     move-result-object p0
                 """,
             )
-            enableInExtension("Imgur")
+            enable.apply()
         }
     }
