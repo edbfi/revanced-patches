@@ -22,19 +22,23 @@ class ReadmeTest {
     private data class Row(val name: String, val description: String, val default: Boolean)
 
     /**
-     * Rows of the first table after the line [heading], within [lines], cells trimmed, header and separator dropped.
-     * Cells are split on " | ", so no cell may hold a pipe.
+     * Rows of the first table after the line [heading], within [lines], cells trimmed, once its header row is [header]
+     * and a separator row follows (else GitHub doesn't render a table). Cells are split on " | ", so none may hold a pipe.
      */
-    private fun table(heading: String, lines: List<String> = readme, cells: Int): List<List<String>> {
+    private fun table(heading: String, header: List<String>, lines: List<String> = readme): List<List<String>> {
         val start = lines.indexOf(heading).takeIf { it >= 0 } ?: fail("README has no \"$heading\" where expected")
-        return lines.drop(start + 1)
-            .dropWhile { !it.startsWith("|") }
-            .takeWhile { it.startsWith("|") }
-            .drop(2)
-            .map { line ->
-                line.trim().removePrefix("|").removeSuffix("|").split(" | ").map { it.trim() }
-                    .takeIf { it.size == cells } ?: fail("README table row under \"$heading\" needs $cells cells: $line")
-            }
+        val rows =
+            lines.drop(start + 1)
+                .dropWhile { !it.startsWith("|") }
+                .takeWhile { it.startsWith("|") }
+                .map { line -> line to line.trim().removePrefix("|").removeSuffix("|").split(" | ").map { it.trim() } }
+        if (rows.firstOrNull()?.second != header) fail("The table under \"$heading\" must start with the header $header")
+        if (rows.getOrNull(1)?.second?.let { cells -> cells.size == header.size && cells.all { it.matches(Regex(":?-{3,}:?")) } } != true) {
+            fail("The table under \"$heading\" needs a separator row after its header")
+        }
+        return rows.drop(2).map { (line, cells) ->
+            cells.takeIf { it.size == header.size } ?: fail("README table row under \"$heading\" needs ${header.size} cells: $line")
+        }
     }
 
     private fun code(cell: String) = Regex("`([^`]+)`").findAll(cell).map { it.groupValues[1] }.toSet()
@@ -43,7 +47,7 @@ class ReadmeTest {
     private fun anchor(heading: String) = heading.lowercase().filter { it.isLetterOrDigit() || it == ' ' || it == '-' }.replace(' ', '-')
 
     private val apps =
-        table("## Supported apps", cells = 3).map { (app, pkg, versions) ->
+        table("## Supported apps", listOf("App", "Package", "Tested version")).map { (app, pkg, versions) ->
             val link = Regex("""^\[(.+)]\(#(.+)\)$""").find(app) ?: fail("Not a link to the app's section: $app")
             val (name, target) = link.destructured
             if (target != anchor(name)) fail("The link to $name goes to #$target, but its heading's anchor is #${anchor(name)}")
@@ -73,7 +77,7 @@ class ReadmeTest {
     fun `each app's patch table matches its patches`() {
         for (app in apps) {
             val rows =
-                table("#### Patches", section(app), cells = 3).map { (name, description, default) ->
+                table("#### Patches", listOf("Patch", "What it does", "Default"), section(app)).map { (name, description, default) ->
                     Row(
                         name,
                         description,
