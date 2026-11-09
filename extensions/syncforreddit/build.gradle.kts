@@ -13,6 +13,8 @@ configurations.configureEach {
 
 dependencies {
     compileOnly(project(":extensions:syncforreddit:stub"))
+    // Lets tests load extension classes that implement the app's types; they never call the stubs.
+    testImplementation(project(":extensions:syncforreddit:stub"))
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
 }

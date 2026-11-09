@@ -6,6 +6,7 @@ import app.edbfi.patches.syncforreddit.SYNC_PACKAGE
 import app.edbfi.patches.syncforreddit.SYNC_VERSION
 import app.edbfi.patches.syncforreddit.misc.extension.EXTENSION
 import app.edbfi.patches.syncforreddit.misc.extension.enableInExtension
+import app.edbfi.patches.syncforreddit.misc.imageclient.imageClientHookPatch
 import app.edbfi.patches.syncforreddit.misc.volley.volleyHookPatch
 import app.revanced.patcher.extensions.addInstructions
 import app.revanced.patcher.patch.PatchException
@@ -19,10 +20,10 @@ private const val DEFAULT_CLIENT_ID = "c3713d9e7674477"
 val fixImgurPatch =
     bytecodePatch(
         name = "Fix Imgur",
-        description = "Fixes Imgur albums failing to open and Imgur uploads failing.",
+        description = "Fixes Imgur albums failing to open, album previews in comments and posts staying blank, and Imgur uploads failing.",
     ) {
         compatibleWith(SYNC_PACKAGE(SYNC_VERSION))
-        dependsOn(volleyHookPatch)
+        dependsOn(volleyHookPatch, imageClientHookPatch)
 
         val clientId by stringOption(
             name = "Imgur client ID",

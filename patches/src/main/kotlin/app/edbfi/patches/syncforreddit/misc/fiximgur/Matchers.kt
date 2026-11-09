@@ -13,12 +13,18 @@ import app.revanced.patcher.patch.BytecodePatchContext
 import app.revanced.patcher.returnType
 import com.android.tools.smali.dexlib2.AccessFlags
 
-/** The app's Imgur requests and the URL each holds: album and single image through the mirror, and the upload. */
+/**
+ * The app's Imgur requests and the URL each holds: album and single image through the mirror, the upload, the upload
+ * switch it checks first, and album previews in comments and posts through its image server.
+ */
 private val IMGUR_REQUESTS =
     mapOf(
         "ExternalGallery.java" to "https://images.syncforreddit.com/a/",
         "SingleImage.java" to "https://images.syncforreddit.com/image/",
         "UploadImgurRequest.java" to "https://imgur-apiv3.p.rapidapi.com/3/image",
+        "CheckUploadStatusRequest.java" to
+            "https://raw.githubusercontent.com/laurencedawson/reddit-sync-development/master/api/upload.json",
+        "SpannableTextViewStringBuilder.java" to "https://ap.syncforreddit.com/image?url=imgur-album-",
     )
 
 /** Fails unless each of the app's Imgur requests still holds the URL the extension answers. */

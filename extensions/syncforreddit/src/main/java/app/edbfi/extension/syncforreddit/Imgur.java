@@ -15,13 +15,20 @@ import org.json.JSONObject;
 /**
  * Answers the app's Imgur requests from Imgur's own API. The app loads albums and single images through its
  * developer's mirror, {@code images.syncforreddit.com}, which no longer exists, and uploads through a RapidAPI proxy
- * that refuses its key (401). Its parsers already read the API's shapes.
+ * that refuses its key (401). Its parsers already read the API's shapes. Album previews in comments and posts, which
+ * came from its developer's image server, become the album cover's thumbnail ({@link ImageServer}).
  */
 public final class Imgur {
     private static final String MIRROR = "https://images.syncforreddit.com/";
     private static final String ALBUM_MIRROR = MIRROR + "a/";
     private static final String IMAGE_MIRROR = MIRROR + "image/";
     private static final String UPLOAD = "https://imgur-apiv3.p.rapidapi.com/3/image";
+    // Before each upload the app asks its developer's GitHub repository whether uploads are on. Anything but
+    // {"enabled":true}, a failed request or a deleted file included, cancels the upload.
+    private static final String UPLOAD_SWITCH =
+            "https://raw.githubusercontent.com/laurencedawson/reddit-sync-development/master/api/upload.json";
+    private static final byte[] UPLOAD_ON = "{\"enabled\":true}".getBytes(StandardCharsets.UTF_8);
+    private static final String ALBUM_PREVIEW = ImageServer.PREFIX + "imgur-album-";
     private static final String API = "https://api.imgur.com/3/";
     // An upload sends the whole image, base64-encoded.
     private static final int UPLOAD_TIMEOUT_MS = 60_000;
@@ -34,7 +41,7 @@ public final class Imgur {
         Http.Reply send(String method, String path, byte[] body, String contentType) throws Exception;
     }
 
-    private static final Api IMGUR = (method, path, body, contentType) -> {
+    static final Api IMGUR = (method, path, body, contentType) -> {
         Map<String, String> headers = new HashMap<>();
         headers.put("Authorization", "Client-ID " + clientId());
         headers.put("User-Agent", Http.systemUserAgent());
@@ -55,7 +62,9 @@ public final class Imgur {
     }
 
     static boolean handles(String url) {
-        return url != null && (url.startsWith(ALBUM_MIRROR) || url.startsWith(IMAGE_MIRROR) || url.startsWith(UPLOAD));
+        return url != null
+                && (url.startsWith(ALBUM_MIRROR) || url.startsWith(IMAGE_MIRROR) || url.startsWith(UPLOAD)
+                        || url.equals(UPLOAD_SWITCH));
     }
 
     /**
@@ -75,8 +84,11 @@ public final class Imgur {
         }
     }
 
-    /** Imgur's answer to the app's request: an upload, an image, or an album. */
+    /** Imgur's answer to the app's request: the upload switch, an upload, an image, or an album. */
     static Http.Reply reply(String url, byte[] body, String contentType, Api api) throws Exception {
+        if (url.equals(UPLOAD_SWITCH)) {
+            return withCacheControl(new Http.Reply(200, UPLOAD_ON, VolleyHook.jsonHeaders()), "no-store");
+        }
         if (url.startsWith(UPLOAD)) {
             if (body == null) throw new IllegalArgumentException("Upload without a body");
             // The app caches every upload's answer under the same key: never let one answer the next.
@@ -91,6 +103,49 @@ public final class Imgur {
         Http.Reply image = api.send("GET", "image/" + id, null, null);
         if (image.status != 200) return album;
         return cached(new Http.Reply(200, albumOf(image.body), VolleyHook.jsonHeaders()));
+    }
+
+    /**
+     * The thumbnail of the album's cover for the app's preview URL of an Imgur album, {@code …?url=imgur-album-<id>},
+     * or null for another preview. Throws when the album has no image to show.
+     */
+    static String albumPreview(String url, Api api) throws Exception {
+        if (url == null || !url.startsWith(ALBUM_PREVIEW)) return null;
+        String id = url.substring(ALBUM_PREVIEW.length());
+        if (!isId(id)) throw new IllegalArgumentException("Unexpected Imgur album preview: " + url);
+        // Glide caches the thumbnail under the preview URL, so each album is looked up once.
+        return "https://i.imgur.com/" + cover(id, api) + "m.jpg";
+    }
+
+    /** The ID of the album's cover image, or of its first image if it names none. */
+    private static String cover(String id, Api api) throws Exception {
+        Http.Reply album = api.send("GET", "album/" + id, null, null);
+        if (album.status == 200) {
+            JSONObject data = data(album);
+            Object cover = data.opt("cover");
+            if (cover instanceof String && isId((String) cover)) return (String) cover;
+            JSONArray images = data.optJSONArray("images");
+            JSONObject first = images == null ? null : images.optJSONObject(0);
+            Object firstId = first == null ? null : first.opt("id");
+            if (firstId instanceof String && isId((String) firstId)) return (String) firstId;
+            throw new IllegalStateException("Imgur album " + id + " has no images");
+        }
+        if (album.status != 404) throw new IllegalStateException("Imgur answered " + album.status + " for album " + id);
+        // Links to a single image posted to Imgur's gallery look like album links. Check the image exists: Imgur
+        // answers a missing image's thumbnail with its "removed" picture, not an error.
+        Http.Reply image = api.send("GET", "image/" + id, null, null);
+        if (image.status != 200) throw new IllegalStateException("Imgur answered " + image.status + " for image " + id);
+        Object imageId = data(image).opt("id");
+        if (imageId instanceof String && isId((String) imageId)) return (String) imageId;
+        throw new IllegalStateException("Imgur image " + id + " has no ID");
+    }
+
+    private static JSONObject data(Http.Reply reply) throws JSONException {
+        return new JSONObject(new String(reply.body, StandardCharsets.UTF_8)).getJSONObject("data");
+    }
+
+    private static boolean isId(String id) {
+        return id.matches("[A-Za-z0-9]+");
     }
 
     /** A successful answer, made cacheable; others as they were. */
@@ -109,7 +164,7 @@ public final class Imgur {
     static String mirrorId(String url) {
         if (url == null || !url.startsWith(MIRROR)) return null;
         String id = url.substring(url.lastIndexOf('/') + 1);
-        return id.matches("[A-Za-z0-9]+") ? id : null;
+        return isId(id) ? id : null;
     }
 
     /** An image response, {@code {"data":{image}}}, as an album response holding only that image. */
