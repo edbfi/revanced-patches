@@ -10,8 +10,8 @@
 | --- | --- | --- |
 | [Sync for Reddit](#sync-for-reddit) | `com.laurencedawson.reddit_sync` | `v23.06.30-13:39` |
 
-Patch the tested version. On another version, a patch that can't find the code it changes fails to apply instead of
-breaking the app.
+Patch the tested version. On another version, a patch that can't find the code it changes fails to apply, and one
+that finds it may still misbehave.
 
 ## Install
 
