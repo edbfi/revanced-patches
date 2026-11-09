@@ -111,9 +111,24 @@ public class WebsitePreviewsTest {
         assertArrayEquals(small, WebsitePreviews.readHead(new ByteArrayInputStream(small), 1000, Long.MAX_VALUE));
     }
 
-    @Test(expected = IOException.class)
-    public void givesUpOnASlowPage() throws IOException {
-        WebsitePreviews.readHead(new ByteArrayInputStream(new byte[10]), 1000, System.currentTimeMillis() - 1);
+    @Test
+    public void givesUpOnASlowPageAndRemembersIt() throws IOException {
+        try {
+            WebsitePreviews.readHead(new ByteArrayInputStream(new byte[10]), 1000, System.currentTimeMillis() - 1);
+        } catch (ImageServer.Answer expected) {
+            return;
+        }
+        throw new AssertionError("Expected a slow page to be an answer");
+    }
+
+    @Test
+    public void neverContactsSync() {
+        assertFalse(WebsitePreviews.handles("https://syncforreddit.com/"));
+        assertFalse(WebsitePreviews.handles("https://todo.syncforreddit.com/licenses.html"));
+        assertFalse(WebsitePreviews.handles("https://AP.SyncForReddit.com:443/image?url=x"));
+        assertTrue(WebsitePreviews.handles("https://notsyncforreddit.com/"));
+        assertNull(WebsitePreviews.imageIn(
+                "<meta property=\"og:image\" content=\"https://ap.syncforreddit.com/image?url=https://example.org/\">", PAGE));
     }
 
     @Test

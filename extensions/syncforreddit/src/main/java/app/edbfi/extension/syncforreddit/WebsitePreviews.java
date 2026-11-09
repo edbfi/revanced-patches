@@ -75,10 +75,18 @@ public final class WebsitePreviews {
         return handles(link) && !Tenor.handles(link);
     }
 
-    /** Whether the link is one whose page this fetches: https only, as the app's own check requires. */
+    /** Whether the link is one whose page this fetches: https only, as the app's own check requires, and not Sync's. */
     static boolean handles(String link) {
         URI uri = uri(link);
-        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && hasPlainHost(uri);
+        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && hasPlainHost(uri) && !isSyncs(uri);
+    }
+
+    /** Whether the URL is on Sync's servers, which previews never contact. */
+    private static boolean isSyncs(URI uri) {
+        String host = uri.getRawAuthority().toLowerCase(Locale.ROOT);
+        int port = host.lastIndexOf(':');
+        if (port > host.lastIndexOf(']')) host = host.substring(0, port);
+        return host.equals("syncforreddit.com") || host.endsWith(".syncforreddit.com");
     }
 
     /**
@@ -142,7 +150,7 @@ public final class WebsitePreviews {
             return null;
         }
         String scheme = resolved.getScheme() == null ? "" : resolved.getScheme().toLowerCase(Locale.ROOT);
-        if (!hasPlainHost(resolved)) return null;
+        if (!hasPlainHost(resolved) || isSyncs(resolved)) return null;
         String rest = resolved.toString().substring(scheme.length());
         // Browsers load an http image on an https page over https too.
         if (scheme.equals("http") || scheme.equals("https")) return "https" + rest;
@@ -178,7 +186,7 @@ public final class WebsitePreviews {
         byte[] head = new byte[maxBytes];
         int size = 0;
         while (size < maxBytes) {
-            if (System.currentTimeMillis() > deadlineMs) throw new IOException("The page took too long to load");
+            if (System.currentTimeMillis() > deadlineMs) throw new ImageServer.Answer("The page took too long to load");
             int read = in.read(head, size, maxBytes - size);
             if (read == -1) break;
             int from = Math.max(0, size - 6);

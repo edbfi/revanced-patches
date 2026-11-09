@@ -10,10 +10,11 @@ import java.net.UnknownHostException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import okhttp3.Call;
 import okhttp3.Dns;
 import okhttp3.HttpUrl;
 import okhttp3.Interceptor;
@@ -45,11 +46,16 @@ public final class ImageServer implements Interceptor {
     // Set while this thread loads a website preview: OkHttp looks hosts up on the call's thread, before connecting.
     private static final ThreadLocal<Boolean> PREVIEWING = new ThreadLocal<>();
     // Cancels a page fetch that runs past its deadline, however slowly the site sends.
-    private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(task -> {
+    private static final ScheduledThreadPoolExecutor WATCHDOG = new ScheduledThreadPoolExecutor(1, task -> {
         Thread thread = new Thread(task, "WebsitePreviews watchdog");
         thread.setDaemon(true);
         return thread;
     });
+
+    static {
+        // A preview that finished in time drops its watchdog, and with it the call it holds.
+        WATCHDOG.setRemoveOnCancelPolicy(true);
+    }
 
     private ImageServer() {}
 
@@ -69,10 +75,14 @@ public final class ImageServer implements Interceptor {
         WebsitePreviews.Pages pages = WebsitePreviews.isEnabled() ? link -> fetchHead(chain, link) : null;
         boolean website = pages != null && WebsitePreviews.isWebsite(url.substring(PREFIX.length()));
         // Every preview's call is to the image server's host, and OkHttp runs five at once per host: however slowly a
-        // site answers, its page and its image's headers get WebsitePreviews.DEADLINE_MS in all.
-        ScheduledFuture<?> watchdog = website
-                ? WATCHDOG.schedule(() -> chain.call().cancel(), WebsitePreviews.DEADLINE_MS, TimeUnit.MILLISECONDS)
-                : null;
+        // site answers, its page and its image's headers get WebsitePreviews.DEADLINE_MS in all (DNS aside). A site
+        // that slow is remembered, so it doesn't hold a slot again each time its preview shows.
+        AtomicBoolean late = new AtomicBoolean();
+        Call call = chain.call();
+        ScheduledFuture<?> watchdog = website ? WATCHDOG.schedule(() -> {
+            late.set(true);
+            call.cancel();
+        }, WebsitePreviews.DEADLINE_MS, TimeUnit.MILLISECONDS) : null;
         if (website) PREVIEWING.set(Boolean.TRUE);
         try {
             String image = thumbnailUrl(url, Imgur.isEnabled() ? Imgur.IMGUR : null, Tenor.isEnabled() ? Tenor.TENOR : null, pages);
@@ -87,8 +97,10 @@ public final class ImageServer implements Interceptor {
             if (response.code() / 100 != 2) failed(url);
             return response;
         } catch (Exception error) {
-            // OkHttp itself can throw others, such as a NumberFormatException for a huge Retry-After.
-            IOException failure = error instanceof IOException ? (IOException) error : new IOException("Preview failed: " + url, error);
+            // Anything else is an answer: an image URL OkHttp refuses, or OkHttp's own NumberFormatException for a huge
+            // Retry-After.
+            IOException failure = late.get() ? new Answer("Preview took too long: " + url, error)
+                    : error instanceof IOException ? (IOException) error : new Answer("Preview failed: " + url, error);
             if (worthRemembering(failure)) failed(url);
             throw failure;
         } finally {
