@@ -46,9 +46,9 @@ Patches for Sync for Reddit. To install them, see the [README](../README.md#inst
 - **Website previews stay blank behind a proxy.** A proxy could reach addresses on your own network, which previews must
   never load.
 - **Translations have no "Translated by Google" badge.** It was an image on Sync's server.
-- **Paints and tags stay on the device: Force refresh does nothing, and Clear all only says "TODO".** Ultra synced
-  them, and cleared them, through Sync's servers, which only serve accounts that bought Ultra. Remove them one at a
-  time.
+- **Paints and tags stay on the device: Paint users' Force refresh does nothing, and Clear all only says "TODO".**
+  Ultra synced them, and cleared them, through Sync's servers, which only serve accounts that bought Ultra. Remove them
+  one at a time.
 - **Settings cloud backup is gone.** It kept backups on Sync's servers. The app's local backup still works.
 - **Restore comment is gone.** It read removed comments from Pushshift, which no longer serves apps.
 - **Translate and Select text from images need Google Play services.** They run Google's ML Kit on the device.

@@ -146,7 +146,7 @@ public class ImageServerTest {
         };
         // What Guard and the host check throw for a private address, a proxy or an http hop.
         WebsitePreviews.Pages refused = link -> {
-            throw new WebsitePreviews.Refused("Not a public address");
+            throw new ImageServer.Answer("Not a public address");
         };
         // On Android a lost connection's exception holds a platform one, such as GaiException, a RuntimeException.
         WebsitePreviews.Pages lost = link -> {

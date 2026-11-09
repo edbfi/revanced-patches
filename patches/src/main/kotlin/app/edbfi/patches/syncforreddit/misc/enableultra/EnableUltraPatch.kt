@@ -20,6 +20,7 @@ import app.revanced.patcher.extensions.replaceInstruction
 import app.revanced.patcher.extensions.string
 import app.revanced.patcher.patch.PatchException
 import app.revanced.patcher.patch.bytecodePatch
+import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -129,8 +130,10 @@ private fun returnUnlessBought(
     hasPurchase: MethodReference,
 ): Edit {
     val implementation = method.implementation ?: throw PatchException("${method.name} has no code")
-    if (method.returnType != "V") throw PatchException("${method.name} doesn't return void")
-    if (implementation.registerCount <= method.parameters.size + 1) throw PatchException("${method.name} has no local register")
+    if (method.returnType != "V" || method.parameters.isNotEmpty() || AccessFlags.STATIC.isSet(method.accessFlags)) {
+        throw PatchException("${method.name} isn't an instance method taking nothing and returning void")
+    }
+    if (implementation.registerCount < 2) throw PatchException("${method.name} has no local register")
     return Edit(1) {
         method.addInstructionsWithLabels(
             0,

@@ -25,8 +25,8 @@ import java.util.regex.Pattern;
 public final class WebsitePreviews {
     /** How much of a page to read, at most: the preview image is named in its head. */
     static final int MAX_HEAD_BYTES = 256 * 1024;
-    /** How long reading a page may take in all, on top of the client's per-read timeout. */
-    static final long PAGE_DEADLINE_MS = 10_000;
+    /** How long a website preview may take to load its page and its image's headers. */
+    static final long DEADLINE_MS = 15_000;
 
     // The meta tags that name a page's preview image, best first.
     private static final String[] IMAGE_TAGS = {"og:image", "og:image:secure_url", "og:image:url", "twitter:image", "twitter:image:src"};
@@ -69,12 +69,6 @@ public final class WebsitePreviews {
         List<InetAddress> lookup(String host) throws IOException;
     }
 
-    /** A request this refuses: an answer, which the failure cache remembers, unlike a lost connection. */
-    static final class Refused extends IOException {
-        Refused(String why) {
-            super(why);
-        }
-    }
 
     private WebsitePreviews() {}
 
@@ -91,7 +85,7 @@ public final class WebsitePreviews {
     /** Whether the link is one whose page this fetches: https only, as the app's own check requires. */
     static boolean handles(String link) {
         URI uri = uri(link);
-        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null && uri.getRawUserInfo() == null;
+        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && hasPlainHost(uri);
     }
 
     /**
@@ -147,7 +141,7 @@ public final class WebsitePreviews {
     static String absolute(String url, String pageUrl) {
         if (url == null) return null;
         URI base = uri(pageUrl);
-        URI resolved = uri(url.trim().replace(" ", "%20"));
+        URI resolved = uri(url.trim());
         if (base == null || resolved == null) return null;
         try {
             resolved = base.resolve(resolved);
@@ -155,7 +149,7 @@ public final class WebsitePreviews {
             return null;
         }
         String scheme = resolved.getScheme() == null ? "" : resolved.getScheme().toLowerCase(Locale.ROOT);
-        if (resolved.getHost() == null || resolved.getRawUserInfo() != null) return null;
+        if (!hasPlainHost(resolved)) return null;
         String rest = resolved.toString().substring(scheme.length());
         // Browsers load an http image on an https page over https too.
         if (scheme.equals("http") || scheme.equals("https")) return "https" + rest;
@@ -235,8 +229,10 @@ public final class WebsitePreviews {
             return isPublicIpv4(bytes, 12);
         }
         // NAT64 64:ff9b::/96 and 6to4 2002::/16 lead to the IPv4 address they hold.
-        if (bytes[0] == 0 && bytes[1] == 0x64 && bytes[2] == (byte) 0xff && bytes[3] == (byte) 0x9b && allZero(bytes, 4, 12)) {
-            return isPublicIpv4(bytes, 12);
+        if (bytes[0] == 0 && bytes[1] == 0x64 && bytes[2] == (byte) 0xff && bytes[3] == (byte) 0x9b) {
+            if (allZero(bytes, 4, 12)) return isPublicIpv4(bytes, 12);
+            // Local-use NAT64 64:ff9b:1::/48 translates to a network's own addresses.
+            if (bytes[4] == 0 && bytes[5] == 1) return false;
         }
         if (bytes[0] == 0x20 && bytes[1] == 0x02) return isPublicIpv4(bytes, 2);
         return true;
@@ -247,7 +243,7 @@ public final class WebsitePreviews {
      * OkHttp gives it: an address is never looked up, so a name can't stand for one.
      */
     static void checkHost(String host, Lookup lookup) throws IOException {
-        if (host == null || host.isEmpty()) throw new Refused("No host");
+        if (host == null || host.isEmpty()) throw new ImageServer.Answer("No host");
         List<InetAddress> addresses;
         if (host.indexOf(':') >= 0 || IPV4.matcher(host).matches()) {
             addresses = Collections.singletonList(InetAddress.getByName(host));
@@ -256,7 +252,7 @@ public final class WebsitePreviews {
         }
         if (addresses == null || addresses.isEmpty()) throw new UnknownHostException(host);
         for (InetAddress address : addresses) {
-            if (!isPublic(address)) throw new Refused("Not a public address (" + address + "): " + host);
+            if (!isPublic(address)) throw new ImageServer.Answer("Not a public address (" + address + "): " + host);
         }
     }
 
@@ -280,10 +276,27 @@ public final class WebsitePreviews {
         return true;
     }
 
+    /** A host and no user info. URI gives no host for some it can't parse as one (an underscore): the authority holds it. */
+    private static boolean hasPlainHost(URI uri) {
+        String authority = uri.getRawAuthority();
+        return authority != null && !authority.isEmpty() && authority.indexOf('@') < 0;
+    }
+
+    /** The link as a URI, with the characters URI refuses and OkHttp and browsers allow (a space, '|') escaped. */
     private static URI uri(String link) {
         if (link == null) return null;
+        StringBuilder escaped = new StringBuilder(link.length());
+        for (byte b : link.getBytes(StandardCharsets.UTF_8)) {
+            int c = b & 0xff;
+            if (c <= 0x20 || c >= 0x7f || "\"<>\\^`{|}".indexOf(c) >= 0) {
+                escaped.append('%').append(Character.toUpperCase(Character.forDigit(c >> 4, 16)))
+                        .append(Character.toUpperCase(Character.forDigit(c & 0xf, 16)));
+            } else {
+                escaped.append((char) c);
+            }
+        }
         try {
-            return new URI(link);
+            return new URI(escaped.toString());
         } catch (Exception error) {
             return null;
         }

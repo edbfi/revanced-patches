@@ -61,6 +61,11 @@ public class WebsitePreviewsTest {
         assertEquals("https://cdn.example.org/a%20b.png", WebsitePreviews.imageIn(
                 "<meta property=\"og:image\" content=\"https://cdn.example.org/a b.png\">", PAGE));
         assertEquals("https://cdn.example.org/&#x/", WebsitePreviews.unescape("https://cdn.example.org/&#x/"));
+        // Pages and images OkHttp loads though URI would refuse them: a '|' in a query, an underscore in a host.
+        assertEquals("https://cdn.example.org/card.jpg", WebsitePreviews.imageIn(
+                "<meta property=\"og:image\" content=\"https://cdn.example.org/card.jpg\">", "https://example.org/story?utm=a|b"));
+        assertEquals("https://sub_domain.example.org/card.jpg", WebsitePreviews.imageIn(
+                "<meta property=\"og:image\" content=\"/card.jpg\">", "https://sub_domain.example.org/story"));
         assertEquals("a/b'c", WebsitePreviews.unescape("a&#x2F;b&#39;c"));
     }
 
@@ -79,6 +84,7 @@ public class WebsitePreviewsTest {
         assertFalse(WebsitePreviews.handles("http://example.org/"));
         assertFalse(WebsitePreviews.handles("imgur-album-x"));
         assertFalse(WebsitePreviews.handles("https://user@example.org/"));
+        assertTrue(WebsitePreviews.handles("https://sub_domain.example.org/a?b=c|d"));
     }
 
     @Test
@@ -116,7 +122,7 @@ public class WebsitePreviewsTest {
             "127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "100.64.0.1",
             "100.127.255.255", "0.0.0.0", "224.0.0.1", "255.255.255.255", "192.0.0.8", "198.18.0.1",
             "::", "::1", "fe80::1", "fc00::1", "fd12:3456::1", "ff02::1", "::ffff:192.168.1.1", "::ffff:127.0.0.1",
-            "64:ff9b::a00:1", "2002:c0a8:101::1", "::10.0.0.1",
+            "64:ff9b::a00:1", "64:ff9b:1::c0a8:101", "2002:c0a8:101::1", "::10.0.0.1",
         }) {
             assertFalse(address, WebsitePreviews.isPublic(InetAddress.getByName(address)));
         }
@@ -168,7 +174,7 @@ public class WebsitePreviewsTest {
     private static void assertRefused(String host, WebsitePreviews.Lookup lookup) throws IOException {
         try {
             WebsitePreviews.checkHost(host, lookup);
-        } catch (WebsitePreviews.Refused expected) {
+        } catch (ImageServer.Answer expected) {
             assertTrue(ImageServer.worthRemembering(expected));
             return;
         }

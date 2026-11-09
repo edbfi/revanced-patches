@@ -14,7 +14,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import okhttp3.Dns;
 import okhttp3.HttpUrl;
 import okhttp3.Interceptor;
@@ -68,12 +67,17 @@ public final class ImageServer implements Interceptor {
         String url = request.url().toString();
         if (!url.startsWith(PREFIX)) return chain.proceed(request);
         if (failedRecently(url)) throw new IOException("Preview failed recently: " + url);
+        WebsitePreviews.Pages pages = WebsitePreviews.isEnabled() ? link -> fetchHead(chain, link) : null;
+        boolean website = pages != null && WebsitePreviews.isWebsite(url.substring(PREFIX.length()));
+        // Every preview's call is to the image server's host, and OkHttp runs five at once per host: however slowly a
+        // site answers, its page and its image's headers get WebsitePreviews.DEADLINE_MS in all.
+        ScheduledFuture<?> watchdog = website
+                ? WATCHDOG.schedule(() -> chain.call().cancel(), WebsitePreviews.DEADLINE_MS, TimeUnit.MILLISECONDS)
+                : null;
         try {
-            WebsitePreviews.Pages pages = WebsitePreviews.isEnabled() ? link -> fetchHead(chain, link) : null;
             String image = thumbnailUrl(url, Imgur.isEnabled() ? Imgur.IMGUR : null, Tenor.isEnabled() ? Tenor.TENOR : null, pages);
             // The app's interceptor set the User-Agent it sends Reddit; other sites get the system's own.
             Request.Builder builder = request.newBuilder().url(image).header("User-Agent", Http.systemUserAgent());
-            boolean website = pages != null && WebsitePreviews.isWebsite(url.substring(PREFIX.length()));
             // A website names any image: Guard checks it as it checked the page. Imgur and Tenor are known hosts.
             if (website) builder.tag(Guard.class, Guard.ON);
             Request thumbnail = builder.build();
@@ -87,21 +91,31 @@ public final class ImageServer implements Interceptor {
             IOException failure = error instanceof IOException ? (IOException) error : new IOException("Preview failed: " + url, error);
             if (worthRemembering(failure)) failed(url);
             throw failure;
+        } finally {
+            if (watchdog != null) watchdog.cancel(false);
         }
     }
 
     /**
-     * Whether a failure is an answer worth remembering: Imgur, Tenor or a page had nothing to show, or refused to say
-     * (a 429 or 5xx, which also spares the shared client's quota), or a page was refused. A lost connection is tried
+     * A failure that is an answer, worth remembering: Imgur, Tenor or a page had nothing to show, or refused to say (a
+     * 429 or 5xx, which also spares the shared client's quota), or a request was refused. A lost connection is tried
      * again when the preview next shows, and a preview nothing handles costs nothing to fail again.
      */
+    static final class Answer extends IOException {
+        Answer(String message) {
+            super(message);
+        }
+
+        Answer(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     static boolean worthRemembering(IOException failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof WebsitePreviews.Refused) return true;
+            if (cause instanceof Answer) return true;
         }
-        // Not deeper: on Android a lost connection's IOException holds a platform exception (GaiException, ErrnoException).
-        Throwable cause = failure.getCause();
-        return cause != null && !(cause instanceof IOException);
+        return false;
     }
 
     private static List<InetAddress> lookup(String host) throws IOException {
@@ -130,8 +144,11 @@ public final class ImageServer implements Interceptor {
             if (thumbnail == null && pages != null && WebsitePreviews.isWebsite(link)) {
                 thumbnail = WebsitePreviews.image(link, pages);
             }
-        } catch (Exception error) {
+        } catch (IOException error) {
             throw new IOException("Preview failed: " + url, error);
+        } catch (Exception error) {
+            // A malformed answer, a bad ID, nothing to show: anything else is an answer.
+            throw new Answer("Preview failed: " + url, error);
         }
         if (thumbnail == null) throw new IOException("Sync's image server is gone: " + url);
         return thumbnail;
@@ -154,17 +171,10 @@ public final class ImageServer implements Interceptor {
             throw new IOException("Not a URL: " + link, error);
         }
         WebsitePreviews.checkHost(page.url().host(), ImageServer::lookup);
-        long deadline = System.currentTimeMillis() + WebsitePreviews.PAGE_DEADLINE_MS;
-        AtomicBoolean late = new AtomicBoolean();
-        // Cancels the whole call, the preview's: it fails, as a page too slow to answer.
-        ScheduledFuture<?> watchdog = WATCHDOG.schedule(() -> {
-            late.set(true);
-            chain.call().cancel();
-        }, WebsitePreviews.PAGE_DEADLINE_MS, TimeUnit.MILLISECONDS);
-        Chain bounded = chain.withConnectTimeout(PAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-                .withReadTimeout(PAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        try (Response response = bounded.proceed(page)) {
-            if (response.code() != 200) throw new WebsitePreviews.Refused("The page answered " + response.code() + ": " + link);
+        long deadline = System.currentTimeMillis() + WebsitePreviews.DEADLINE_MS;
+        // The client's connect timeout holds: this OkHttp reads only the read timeout from the chain.
+        try (Response response = chain.withReadTimeout(PAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS).proceed(page)) {
+            if (response.code() != 200) throw new Answer("The page answered " + response.code() + ": " + link);
             String contentType = response.header("Content-Type");
             ResponseBody body = response.body();
             byte[] head = new byte[0];
@@ -174,12 +184,6 @@ public final class ImageServer implements Interceptor {
                 }
             }
             return new WebsitePreviews.Page(response.request().url().toString(), contentType, head);
-        } catch (IOException failure) {
-            if (late.get()) throw new WebsitePreviews.Refused("The page took too long to load: " + link);
-            throw failure;
-        } finally {
-            watchdog.cancel(false);
-            if (late.get()) throw new WebsitePreviews.Refused("The page took too long to load: " + link);
         }
     }
 
@@ -195,22 +199,22 @@ public final class ImageServer implements Interceptor {
         public Response intercept(Chain chain) throws IOException {
             Request request = chain.request();
             if (request.tag(Guard.class) == null) return chain.proceed(request);
-            if (!request.isHttps()) throw new WebsitePreviews.Refused("Not https: " + request.url());
+            if (!request.isHttps()) throw new Answer("Not https: " + request.url());
             Route route = chain.connection() == null ? null : chain.connection().route();
             if (route == null || route.proxy().type() != Proxy.Type.DIRECT) {
-                throw new WebsitePreviews.Refused("Behind a proxy: " + request.url());
+                throw new Answer("Behind a proxy: " + request.url());
             }
             InetSocketAddress address = route.socketAddress();
             if (!WebsitePreviews.isPublic(address.getAddress())) {
-                throw new WebsitePreviews.Refused("Not a public address (" + address.getAddress() + "): " + request.url());
+                throw new Answer("Not a public address (" + address.getAddress() + "): " + request.url());
             }
             Response response = chain.proceed(request);
             String location = response.code() / 100 == 3 ? response.header("Location") : null;
             if (location != null) {
                 HttpUrl next = request.url().resolve(location);
                 try {
-                    if (next == null) throw new WebsitePreviews.Refused("Not a URL: " + location);
-                    if (!next.toString().startsWith("https://")) throw new WebsitePreviews.Refused("Not https: " + next);
+                    if (next == null) throw new Answer("Not a URL: " + location);
+                    if (!next.toString().startsWith("https://")) throw new Answer("Not https: " + next);
                     WebsitePreviews.checkHost(next.host(), ImageServer::lookup);
                 } catch (IOException | RuntimeException refused) {
                     response.close();
