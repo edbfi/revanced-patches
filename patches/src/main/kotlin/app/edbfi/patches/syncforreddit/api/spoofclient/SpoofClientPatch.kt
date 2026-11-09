@@ -53,18 +53,25 @@ val spoofClientPatch =
             val id = clientId!!
             val basic = "Basic " + Base64.getEncoder().encodeToString("$id:".toByteArray())
 
-            redirectUriMethod().returnString(redirectUri!!)
-            basicAuthMethod().returnString(basic)
-            userAgentMethod().returnString(userAgent!!)
+            val edits =
+                listOf(
+                    redirectUriMethod().returnString(redirectUri!!),
+                    basicAuthMethod().returnString(basic),
+                    userAgentMethod().returnString(userAgent!!),
+                )
 
             // The client ID is a literal in the authorize URL; the redirect URI is appended from the method above.
             val withClientId = authorizeUrlMethod().rewriteStrings { it.withClientId(id) }
-            if (withClientId != 1) throw PatchException("Expected one authorize URL, rewrote $withClientId")
+            if (withClientId.count != 1) throw PatchException("Expected one authorize URL, found ${withClientId.count}")
 
             // ssl.reddit.com answers 301 to www.reddit.com, which turns the token POSTs into GETs.
             val sslMethods = classDefs.methodsByString.filterKeys { it.startsWith(SSL_HOST) }.values.flatten().toSet()
-            val toWww = sslMethods.sumOf { method -> firstMethod(method).rewriteStrings { it.onWwwHost() } }
-            if (toWww == 0) throw PatchException("Found no ssl.reddit.com URLs to rewrite")
+            val toWww = sslMethods.map { method -> firstMethod(method).rewriteStrings { it.onWwwHost() } }
+            if (toWww.sumOf { it.count } == 0) throw PatchException("Found no ssl.reddit.com URLs to rewrite")
+
+            // The authorize URL is an ssl.reddit.com URL too: its host is rewritten after its client ID. The returns go in
+            // last, as they move the instructions the rewrites point at.
+            (listOf(withClientId) + toWww + edits).forEach { it.apply() }
         }
     }
 

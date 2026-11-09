@@ -34,12 +34,12 @@ val fixImgurPatch =
 
         apply {
             checkImgurRequests()
-            clientIdMethod().returnString(clientId!!)
-            enableInExtension("Imgur")
-
             // Newer Imgur links put a title before the ID (/a/funny-cat-AbC1234), which the app would cut to "funny".
             val idMethod = imgurIdMethod()
             if (idMethod.implementation!!.registerCount > 16) throw PatchException("${idMethod.name} has too many registers")
+            val clientIdEdit = clientIdMethod().returnString(clientId!!)
+
+            clientIdEdit.apply()
             idMethod.addInstructions(
                 0,
                 """
@@ -47,5 +47,6 @@ val fixImgurPatch =
                     move-result-object p0
                 """,
             )
+            enableInExtension("Imgur")
         }
     }

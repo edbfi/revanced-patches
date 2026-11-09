@@ -13,37 +13,51 @@ import com.android.tools.smali.dexlib2.builder.BuilderInstruction
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction11x
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21c
 import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction31c
+import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.immutable.reference.ImmutableStringReference
 
 /**
- * Rewrites the method's string literals: [transform] returns the new value, or null to keep a literal.
- * Returns how many literals changed.
+ * A change to one method, checked but not yet made. The patcher keeps a failed patch's changes, so a patch looks up
+ * and checks everything it needs, then [apply]s its edits.
  */
-internal fun MutableMethod.rewriteStrings(transform: (String) -> String?): Int {
-    val edits =
-        instructions.withIndex().mapNotNull { (index, instruction) ->
-            val jumbo =
-                when (instruction.opcode) {
-                    Opcode.CONST_STRING -> false
-                    Opcode.CONST_STRING_JUMBO -> true
-                    else -> return@mapNotNull null
-                }
-            val old = instruction.string ?: return@mapNotNull null
-            val new = transform(old)?.takeIf { it != old } ?: return@mapNotNull null
-            Triple(index, jumbo, new)
+internal class Edit(
+    /** How many instructions the edit changes. */
+    val count: Int,
+    private val change: () -> Unit,
+) {
+    fun apply() = change()
+}
+
+/**
+ * Rewrites the method's string literals: [transform] returns the new value, or null to keep a literal. The edit holds
+ * the literals' indices, so apply it before edits that insert instructions into the same method. It reads each literal
+ * again when applied, so a second rewrite of the same literal sees the first one's result.
+ */
+internal fun MutableMethod.rewriteStrings(transform: (String) -> String?): Edit {
+    val indices = instructions.withIndex().filter { (_, instruction) -> instruction.rewritten(transform) != null }.map { it.index }
+    return Edit(indices.size) {
+        for (index in indices) {
+            val instruction = getInstruction<Instruction>(index)
+            val new = instruction.rewritten(transform) ?: continue
+            val register = (instruction as OneRegisterInstruction).registerA
+            replaceInstruction(index, constString(register, new, jumbo = instruction.opcode == Opcode.CONST_STRING_JUMBO))
         }
-    for ((index, jumbo, new) in edits) {
-        val register = getInstruction<OneRegisterInstruction>(index).registerA
-        replaceInstruction(index, constString(register, new, jumbo))
     }
-    return edits.size
+}
+
+private fun Instruction.rewritten(transform: (String) -> String?): String? {
+    if (opcode != Opcode.CONST_STRING && opcode != Opcode.CONST_STRING_JUMBO) return null
+    val old = string ?: return null
+    return transform(old)?.takeIf { it != old }
 }
 
 /** Makes the method return [value]. The original body stays behind the early return. */
-internal fun MutableMethod.returnString(value: String) {
+internal fun MutableMethod.returnString(value: String): Edit {
     if ((implementation?.registerCount ?: 0) < 1) throw PatchException("$name has no register for a string")
-    addInstructions(0, listOf<BuilderInstruction>(constString(0, value, jumbo = false), BuilderInstruction11x(Opcode.RETURN_OBJECT, 0)))
+    return Edit(1) {
+        addInstructions(0, listOf<BuilderInstruction>(constString(0, value, jumbo = false), BuilderInstruction11x(Opcode.RETURN_OBJECT, 0)))
+    }
 }
 
 private fun constString(
