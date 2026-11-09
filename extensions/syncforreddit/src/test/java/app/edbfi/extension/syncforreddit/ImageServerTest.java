@@ -7,6 +7,8 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -150,7 +152,7 @@ public class ImageServerTest {
         };
         // On Android a lost connection's exception holds a platform one, such as GaiException, a RuntimeException.
         WebsitePreviews.Pages lost = link -> {
-            throw (IOException) new java.net.UnknownHostException("example.org").initCause(new RuntimeException("android_getaddrinfo failed"));
+            throw (IOException) new UnknownHostException("example.org").initCause(new RuntimeException("android_getaddrinfo failed"));
         };
         WebsitePreviews.Pages pdf = link -> new WebsitePreviews.Page(link, "application/pdf", new byte[0]);
         assertTrue(ImageServer.worthRemembering(websiteFailure(preview, bare)));
@@ -172,7 +174,7 @@ public class ImageServerTest {
 
     @Test
     public void refusesPrivateAddressesOnlyWhileLoadingAWebsitePreview() throws IOException {
-        java.util.List<java.net.InetAddress> lan = Collections.singletonList(java.net.InetAddress.getByName("192.168.1.50"));
+        List<InetAddress> lan = Collections.singletonList(InetAddress.getByName("192.168.1.50"));
         ImageServer.PreviewDns dns = new ImageServer.PreviewDns(host -> lan);
         // Other images, such as a self-hosted Imgur proxy, resolve as before.
         assertEquals(lan, dns.lookup("nas.example.org"));
