@@ -22,6 +22,9 @@ public class ImgurTest {
     private static final String ALBUM = "https://images.syncforreddit.com/a/0123456789abcdef0123456789abcdef/";
     private static final String IMAGE = "https://images.syncforreddit.com/image/0123456789abcdef0123456789abcdef/";
     private static final String UPLOAD = "https://imgur-apiv3.p.rapidapi.com/3/image";
+    private static final String UPLOAD_SWITCH =
+            "https://raw.githubusercontent.com/laurencedawson/reddit-sync-development/master/api/upload.json";
+    private static final String PREVIEW = "https://ap.syncforreddit.com/image?url=imgur-album-";
     private static final String IMAGE_JSON =
             "{\"data\":{\"id\":\"AbC1234\",\"link\":\"https://i.imgur.com/AbC1234.png\",\"mp4\":\"\","
                     + "\"width\":640,\"height\":480,\"title\":null},\"success\":true,\"status\":200}";
@@ -53,6 +56,8 @@ public class ImgurTest {
         assertTrue(Imgur.handles(ALBUM + "AbC1234"));
         assertTrue(Imgur.handles(IMAGE + "AbC1234"));
         assertTrue(Imgur.handles(UPLOAD));
+        assertTrue(Imgur.handles(UPLOAD_SWITCH));
+        assertFalse(Imgur.handles(UPLOAD_SWITCH + "?x"));
         assertFalse(Imgur.handles("https://i.imgur.com/AbC1234.png"));
         assertFalse(Imgur.handles("https://api.imgur.com/3/image"));
         assertFalse(Imgur.handles("https://ap.syncforreddit.com/image?url=imgur-album-x"));
@@ -177,5 +182,73 @@ public class ImgurTest {
         JSONObject image = album.getJSONObject("data").getJSONArray("images").getJSONObject(0);
         assertEquals("AbC1234", image.getString("id"));
         assertEquals("", image.getString("mp4"));
+    }
+
+    @Test
+    public void turnsUploadsOnWithoutAsking() throws Exception {
+        FakeApi api = new FakeApi();
+        Http.Reply reply = Imgur.reply(UPLOAD_SWITCH, null, null, api);
+        assertEquals(200, reply.status);
+        assertTrue(new JSONObject(new String(reply.body, StandardCharsets.UTF_8)).getBoolean("enabled"));
+        assertEquals("no-store", reply.header("Cache-Control"));
+        assertTrue(api.asked.isEmpty());
+    }
+
+    @Test
+    public void previewsAnAlbumWithItsCover() throws Exception {
+        FakeApi api = new FakeApi().answer("album/AlbCov1", 200, "{\"data\":{\"cover\":\"CoVeR12\",\"images\":[{\"id\":\"First12\"}]}}");
+        assertEquals("https://i.imgur.com/CoVeR12m.jpg", Imgur.albumPreview(PREVIEW + "AlbCov1", api));
+        // The next drawing of the same preview asks nothing.
+        assertEquals("https://i.imgur.com/CoVeR12m.jpg", Imgur.albumPreview(PREVIEW + "AlbCov1", api));
+        assertEquals(Arrays.asList("GET album/AlbCov1"), api.asked);
+    }
+
+    @Test
+    public void previewsAnAlbumWithoutACoverWithItsFirstImage() throws Exception {
+        FakeApi api = new FakeApi().answer("album/AlbNoCv", 200, "{\"data\":{\"cover\":null,\"images\":[{\"id\":\"First12\"}]}}");
+        assertEquals("https://i.imgur.com/First12m.jpg", Imgur.albumPreview(PREVIEW + "AlbNoCv", api));
+    }
+
+    @Test
+    public void previewsAnImageLinkedAsAnAlbum() throws Exception {
+        FakeApi api = new FakeApi().answer("image/ImgLnk1", 200, IMAGE_JSON.replace("AbC1234", "ImgLnk1"));
+        assertEquals("https://i.imgur.com/ImgLnk1m.jpg", Imgur.albumPreview(PREVIEW + "ImgLnk1", api));
+        assertEquals(Arrays.asList("GET album/ImgLnk1", "GET image/ImgLnk1"), api.asked);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void failsAPreviewWhenNeitherExists() throws Exception {
+        Imgur.albumPreview(PREVIEW + "Gone123", new FakeApi());
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void failsAPreviewOfAnEmptyAlbum() throws Exception {
+        Imgur.albumPreview(PREVIEW + "Empty12", new FakeApi().answer("album/Empty12", 200, "{\"data\":{\"images\":[]}}"));
+    }
+
+    @Test
+    public void doesNotTryAnImageWhenTheAlbumPreviewFailsOtherwise() throws Exception {
+        FakeApi api = new FakeApi().answer("album/Limit12", 429, "");
+        try {
+            Imgur.albumPreview(PREVIEW + "Limit12", api);
+        } catch (IllegalStateException expected) {
+            assertEquals(Arrays.asList("GET album/Limit12"), api.asked);
+            return;
+        }
+        throw new AssertionError("Expected a failure");
+    }
+
+    @Test
+    public void leavesOtherPreviewsAlone() throws Exception {
+        FakeApi api = new FakeApi();
+        assertNull(Imgur.albumPreview("https://ap.syncforreddit.com/image?url=https://tenor.com/view/x", api));
+        assertNull(Imgur.albumPreview("https://ap.syncforreddit.com/image?url=gfycat-x", api));
+        assertNull(Imgur.albumPreview(null, api));
+        assertTrue(api.asked.isEmpty());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsAPreviewWithABadId() throws Exception {
+        Imgur.albumPreview(PREVIEW + "../x", new FakeApi());
     }
 }

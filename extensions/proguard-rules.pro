@@ -4,3 +4,4 @@
 -dontobfuscate
 # Stub classes are compile-only: the app provides them at runtime.
 -dontwarn com.android.volley.**
+-dontwarn okhttp3.**
