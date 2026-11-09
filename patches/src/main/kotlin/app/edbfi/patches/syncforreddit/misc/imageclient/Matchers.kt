@@ -30,7 +30,8 @@ internal fun Instruction.isClientBuild(): Boolean {
     return opcode == Opcode.INVOKE_VIRTUAL &&
         reference.definingClass == "Lokhttp3/OkHttpClient\$Builder;" &&
         reference.name == "build" &&
-        reference.parameterTypes.isEmpty()
+        reference.parameterTypes.isEmpty() &&
+        reference.returnType == "Lokhttp3/OkHttpClient;"
 }
 
 private fun buildsClient(method: Method) = method.implementation?.instructions?.any { it.isClientBuild() } == true

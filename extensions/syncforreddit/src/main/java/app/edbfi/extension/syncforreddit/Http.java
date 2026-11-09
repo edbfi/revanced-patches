@@ -35,8 +35,21 @@ final class Http {
 
     /** The system's own User-Agent, for services other than Reddit, which must never get the one the app sends Reddit. */
     static String systemUserAgent() {
-        String agent = System.getProperty("http.agent");
-        return agent == null || agent.isEmpty() ? "Dalvik/2.1.0 (Linux; Android)" : agent;
+        return headerSafe(System.getProperty("http.agent"));
+    }
+
+    /**
+     * The agent with every character a header value can't hold replaced by '?'. It holds the device's model name,
+     * which on some phones has characters such as '™', and OkHttp refuses those.
+     */
+    static String headerSafe(String agent) {
+        if (agent == null || agent.isEmpty()) return "Dalvik/2.1.0 (Linux; Android)";
+        StringBuilder safe = new StringBuilder(agent.length());
+        for (int i = 0; i < agent.length(); i++) {
+            char c = agent.charAt(i);
+            safe.append(c == '\t' || (c >= ' ' && c <= '~') ? c : '?');
+        }
+        return safe.toString();
     }
 
     static Reply send(String method, String url, Map<String, String> headers, byte[] body, boolean followRedirects)

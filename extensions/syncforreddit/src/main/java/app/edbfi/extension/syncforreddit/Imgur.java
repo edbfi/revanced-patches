@@ -29,7 +29,6 @@ public final class Imgur {
             "https://raw.githubusercontent.com/laurencedawson/reddit-sync-development/master/api/upload.json";
     private static final byte[] UPLOAD_ON = "{\"enabled\":true}".getBytes(StandardCharsets.UTF_8);
     private static final String ALBUM_PREVIEW = ImageServer.PREFIX + "imgur-album-";
-    private static final String THUMBNAIL = "https://i.imgur.com/%sm.jpg";
     private static final String API = "https://api.imgur.com/3/";
     // An upload sends the whole image, base64-encoded.
     private static final int UPLOAD_TIMEOUT_MS = 60_000;
@@ -115,7 +114,7 @@ public final class Imgur {
         String id = url.substring(ALBUM_PREVIEW.length());
         if (!isId(id)) throw new IllegalArgumentException("Unexpected Imgur album preview: " + url);
         // Glide caches the thumbnail under the preview URL, so each album is looked up once.
-        return String.format(THUMBNAIL, cover(id, api));
+        return "https://i.imgur.com/" + cover(id, api) + "m.jpg";
     }
 
     /** The ID of the album's cover image, or of its first image if it names none. */
