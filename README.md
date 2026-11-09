@@ -42,7 +42,7 @@ Tested on `com.laurencedawson.reddit_sync` `v23.06.30-13:39`.
 | Fix View more comments | Fixes "View more" not loading further comments. |
 | Fix galleries | Fixes Reddit galleries failing to open. |
 | Fix Other discussions | Fixes "Other discussions" failing to load, by searching Reddit for the link instead. |
-| Fix Imgur | Fixes Imgur albums failing to open, album previews in comments staying blank, and Imgur uploads failing. |
+| Fix Imgur | Fixes Imgur albums failing to open, album previews in comments and posts staying blank, and Imgur uploads failing. |
 | Use /user/ endpoint (off by default) | Requests user profiles from /user/ instead of /u/. Not needed today: Reddit redirects /u/ to /user/, and the app follows the redirect. |
 
 Spoof client defaults to [RedReader](https://github.com/QuantumBadger/RedReader)'s client. If Reddit stops accepting

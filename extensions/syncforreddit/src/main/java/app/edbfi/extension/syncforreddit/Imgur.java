@@ -5,9 +5,7 @@ import android.util.Log;
 import com.android.volley.NetworkResponse;
 import com.android.volley.Request;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
 import org.json.JSONArray;
@@ -17,7 +15,7 @@ import org.json.JSONObject;
 /**
  * Answers the app's Imgur requests from Imgur's own API. The app loads albums and single images through its
  * developer's mirror, {@code images.syncforreddit.com}, which no longer exists, and uploads through a RapidAPI proxy
- * that refuses its key (401). Its parsers already read the API's shapes. Album previews in comments, which came from
+ * that refuses its key (401). Its parsers already read the API's shapes. Album previews in comments and posts, which came from
  * its developer's image server, become the album cover's thumbnail ({@link ImageServer}).
  */
 public final class Imgur {
@@ -32,15 +30,6 @@ public final class Imgur {
     private static final byte[] UPLOAD_ON = "{\"enabled\":true}".getBytes(StandardCharsets.UTF_8);
     private static final String ALBUM_PREVIEW = ImageServer.PREFIX + "imgur-album-";
     private static final String THUMBNAIL = "https://i.imgur.com/%sm.jpg";
-    // Album IDs and their cover's ID, so redrawing a comment costs no API call; Glide keeps the images themselves.
-    private static final int COVERS_KEPT = 256;
-    private static final Map<String, String> COVERS = Collections.synchronizedMap(
-            new LinkedHashMap<String, String>(16, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
-                    return size() > COVERS_KEPT;
-                }
-            });
     private static final String API = "https://api.imgur.com/3/";
     // An upload sends the whole image, base64-encoded.
     private static final int UPLOAD_TIMEOUT_MS = 60_000;
@@ -125,12 +114,8 @@ public final class Imgur {
         if (url == null || !url.startsWith(ALBUM_PREVIEW)) return null;
         String id = url.substring(ALBUM_PREVIEW.length());
         if (!isId(id)) throw new IllegalArgumentException("Unexpected Imgur album preview: " + url);
-        String cover = COVERS.get(id);
-        if (cover == null) {
-            cover = cover(id, api);
-            COVERS.put(id, cover);
-        }
-        return String.format(THUMBNAIL, cover);
+        // Glide caches the thumbnail under the preview URL, so each album is looked up once.
+        return String.format(THUMBNAIL, cover(id, api));
     }
 
     /** The ID of the album's cover image, or of its first image if it names none. */

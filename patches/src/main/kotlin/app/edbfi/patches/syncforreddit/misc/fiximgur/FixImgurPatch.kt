@@ -20,7 +20,7 @@ private const val DEFAULT_CLIENT_ID = "c3713d9e7674477"
 val fixImgurPatch =
     bytecodePatch(
         name = "Fix Imgur",
-        description = "Fixes Imgur albums failing to open, album previews in comments staying blank, and Imgur uploads failing.",
+        description = "Fixes Imgur albums failing to open, album previews in comments and posts staying blank, and Imgur uploads failing.",
     ) {
         compatibleWith(SYNC_PACKAGE(SYNC_VERSION))
         dependsOn(volleyHookPatch, imageClientHookPatch)

@@ -198,8 +198,6 @@ public class ImgurTest {
     public void previewsAnAlbumWithItsCover() throws Exception {
         FakeApi api = new FakeApi().answer("album/AlbCov1", 200, "{\"data\":{\"cover\":\"CoVeR12\",\"images\":[{\"id\":\"First12\"}]}}");
         assertEquals("https://i.imgur.com/CoVeR12m.jpg", Imgur.albumPreview(PREVIEW + "AlbCov1", api));
-        // The next drawing of the same preview asks nothing.
-        assertEquals("https://i.imgur.com/CoVeR12m.jpg", Imgur.albumPreview(PREVIEW + "AlbCov1", api));
         assertEquals(Arrays.asList("GET album/AlbCov1"), api.asked);
     }
 

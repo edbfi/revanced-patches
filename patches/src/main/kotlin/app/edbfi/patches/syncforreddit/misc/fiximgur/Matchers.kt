@@ -15,7 +15,7 @@ import com.android.tools.smali.dexlib2.AccessFlags
 
 /**
  * The app's Imgur requests and the URL each holds: album and single image through the mirror, the upload, the upload
- * switch it checks first, and album previews in comments through its image server.
+ * switch it checks first, and album previews in comments and posts through its image server.
  */
 private val IMGUR_REQUESTS =
     mapOf(
