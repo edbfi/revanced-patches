@@ -85,6 +85,9 @@ public class WebsitePreviewsTest {
         assertFalse(WebsitePreviews.handles("imgur-album-x"));
         assertFalse(WebsitePreviews.handles("https://user@example.org/"));
         assertTrue(WebsitePreviews.handles("https://sub_domain.example.org/a?b=c|d"));
+        assertTrue(WebsitePreviews.handles("https://example.org/media/card[1].jpg?filter[id]=1"));
+        assertTrue(WebsitePreviews.handles("https://example.org/100%-real#s1#s2"));
+        assertTrue(WebsitePreviews.handles("https://[2606:4700::1111]/"));
     }
 
     @Test
@@ -122,13 +125,10 @@ public class WebsitePreviewsTest {
     }
 
     @Test
-    public void neverContactsSync() {
-        assertFalse(WebsitePreviews.handles("https://syncforreddit.com/"));
-        assertFalse(WebsitePreviews.handles("https://todo.syncforreddit.com/licenses.html"));
-        assertFalse(WebsitePreviews.handles("https://AP.SyncForReddit.com:443/image?url=x"));
-        assertTrue(WebsitePreviews.handles("https://notsyncforreddit.com/"));
-        assertNull(WebsitePreviews.imageIn(
-                "<meta property=\"og:image\" content=\"https://ap.syncforreddit.com/image?url=https://example.org/\">", PAGE));
+    public void leavesGfycatToItsOwnPreviews() {
+        assertFalse(WebsitePreviews.isWebsite("https://gfycat.com/SomeName"));
+        assertFalse(WebsitePreviews.isWebsite("https://thumbs.gfycat.com/SomeName.jpg"));
+        assertTrue(WebsitePreviews.isWebsite("https://example.org/gfycat.com"));
     }
 
     @Test
@@ -172,12 +172,15 @@ public class WebsitePreviewsTest {
 
     @Test
     public void refusesPrivateAddressesGivenAsHosts() throws IOException {
-        WebsitePreviews.checkLiteral("example.org");
-        WebsitePreviews.checkLiteral("1.1.1.1");
-        WebsitePreviews.checkLiteral("2606:4700::1111");
-        for (String host : new String[] {"127.0.0.1", "192.168.1.50", "::1", "fd00::1", ""}) {
+        WebsitePreviews.checkHost("example.org");
+        WebsitePreviews.checkHost("1.1.1.1");
+        WebsitePreviews.checkHost("2606:4700::1111");
+        WebsitePreviews.checkHost("notsyncforreddit.com");
+        // OkHttp connects to any host of digits and dots without looking it up: 127.1 and 2130706433 are 127.0.0.1.
+        for (String host : new String[] {"127.0.0.1", "192.168.1.50", "::1", "fd00::1", "", "127.1", "10.1", "2130706433",
+            "127.0.0.0001", "300.1.1.1", "syncforreddit.com", "ap.syncforreddit.com", "AP.SyncForReddit.com."}) {
             try {
-                WebsitePreviews.checkLiteral(host);
+                WebsitePreviews.checkHost(host);
             } catch (ImageServer.Answer expected) {
                 assertTrue(ImageServer.worthRemembering(expected));
                 continue;

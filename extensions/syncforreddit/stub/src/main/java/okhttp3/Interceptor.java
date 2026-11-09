@@ -18,8 +18,6 @@ public interface Interceptor {
         /** Null in an application interceptor. */
         Connection connection();
 
-        Chain withConnectTimeout(int timeout, TimeUnit unit);
-
         Chain withReadTimeout(int timeout, TimeUnit unit);
     }
 }

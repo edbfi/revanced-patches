@@ -91,7 +91,7 @@ public final class ImageServer implements Interceptor {
             // A website names any image: Guard checks it as it checked the page. Imgur and Tenor are known hosts.
             if (website) builder.tag(Guard.class, Guard.ON);
             Request thumbnail = builder.build();
-            if (website) WebsitePreviews.checkLiteral(thumbnail.url().host());
+            if (website) WebsitePreviews.checkHost(thumbnail.url().host());
             Response response = chain.proceed(thumbnail);
             // Glide fails on any other answer: don't ask the page again each time the preview scrolls into view.
             if (response.code() / 100 != 2) failed(url);
@@ -207,7 +207,7 @@ public final class ImageServer implements Interceptor {
         } catch (IllegalArgumentException error) {
             throw new IOException("Not a URL: " + link, error);
         }
-        WebsitePreviews.checkLiteral(page.url().host());
+        WebsitePreviews.checkHost(page.url().host());
         long deadline = System.currentTimeMillis() + WebsitePreviews.DEADLINE_MS;
         // The client's connect timeout holds: this OkHttp reads only the read timeout from the chain.
         try (Response response = chain.withReadTimeout(PAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS).proceed(page)) {
@@ -226,9 +226,9 @@ public final class ImageServer implements Interceptor {
 
     /**
      * A network interceptor: checks each hop of a website preview once connected, before its request is sent. It must
-     * be https and reach a public address. A redirect must lead to https and, if to an address, a public one, checked
-     * before OkHttp follows it; {@link PreviewDns} checks a name's. Behind a proxy the address is the proxy's, so
-     * nothing is sent: the proxy would reach any host.
+     * be https and reach a public address. A redirect must lead to https and a host {@link WebsitePreviews#checkHost}
+     * allows, checked before OkHttp follows it; {@link PreviewDns} checks a name's addresses. Behind a proxy the address
+     * is the proxy's, so nothing is sent: the proxy would reach any host.
      */
     static final class Guard implements Interceptor {
         static final Guard ON = new Guard();
@@ -253,7 +253,7 @@ public final class ImageServer implements Interceptor {
                 try {
                     if (next == null) throw new Answer("Not a URL: " + location);
                     if (!next.toString().startsWith("https://")) throw new Answer("Not https: " + next);
-                    WebsitePreviews.checkLiteral(next.host());
+                    WebsitePreviews.checkHost(next.host());
                 } catch (IOException | RuntimeException refused) {
                     response.close();
                     throw refused instanceof IOException ? (IOException) refused : new IOException("Redirect failed", refused);

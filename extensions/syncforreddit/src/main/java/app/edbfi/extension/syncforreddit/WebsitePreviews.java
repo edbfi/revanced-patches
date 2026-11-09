@@ -33,7 +33,7 @@ public final class WebsitePreviews {
             "([A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
     private static final Pattern ENTITY = Pattern.compile("&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z]{2,6});");
     private static final Map<String, String> NAMED = new HashMap<>();
-    private static final Pattern IPV4 = Pattern.compile("[0-9]{1,3}(\\.[0-9]{1,3}){3}");
+    private static final Pattern DIGITS_AND_DOTS = Pattern.compile("[0-9.]+");
 
     static {
         NAMED.put("amp", "&");
@@ -70,23 +70,19 @@ public final class WebsitePreviews {
         return false;
     }
 
-    /** Whether the link is a website preview's: an https link that isn't Tenor's (Fix Tenor previews handles those). */
+    /**
+     * Whether the link is a website preview's: an https link that isn't Tenor's (Fix Tenor previews handles those) or
+     * Gfycat's (Gfycat shut down).
+     */
     static boolean isWebsite(String link) {
-        return handles(link) && !Tenor.handles(link);
+        URI uri = uri(link);
+        return handles(link) && !Tenor.handles(link) && !onDomain(hostOf(uri), "gfycat.com");
     }
 
-    /** Whether the link is one whose page this fetches: https only, as the app's own check requires, and not Sync's. */
+    /** Whether the link is one whose page this fetches: https only, as the app's own check requires. */
     static boolean handles(String link) {
         URI uri = uri(link);
-        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && hasPlainHost(uri) && !isSyncs(uri);
-    }
-
-    /** Whether the URL is on Sync's servers, which previews never contact. */
-    private static boolean isSyncs(URI uri) {
-        String host = uri.getRawAuthority().toLowerCase(Locale.ROOT);
-        int port = host.lastIndexOf(':');
-        if (port > host.lastIndexOf(']')) host = host.substring(0, port);
-        return host.equals("syncforreddit.com") || host.endsWith(".syncforreddit.com");
+        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && hasPlainHost(uri);
     }
 
     /**
@@ -150,7 +146,7 @@ public final class WebsitePreviews {
             return null;
         }
         String scheme = resolved.getScheme() == null ? "" : resolved.getScheme().toLowerCase(Locale.ROOT);
-        if (!hasPlainHost(resolved) || isSyncs(resolved)) return null;
+        if (!hasPlainHost(resolved)) return null;
         String rest = resolved.toString().substring(scheme.length());
         // Browsers load an http image on an https page over https too.
         if (scheme.equals("http") || scheme.equals("https")) return "https" + rest;
@@ -240,14 +236,55 @@ public final class WebsitePreviews {
     }
 
     /**
-     * Refuses an address given as a host, before anything connects to it. `host` is canonical, as OkHttp gives it.
-     * OkHttp looks a name up, and {@link ImageServer} checks what its DNS answers; it never looks up an address.
+     * Refuses a host before anything connects to it: Sync's, which previews never contact, and an address that isn't
+     * public. `host` is canonical, as OkHttp gives it. OkHttp takes any host of digits and dots as an address and never
+     * looks it up, so one that isn't a plain dotted quad is refused; it looks a name up, and {@link ImageServer} checks
+     * what its DNS answers.
      */
-    static void checkLiteral(String host) throws IOException {
+    static void checkHost(String host) throws IOException {
         if (host == null || host.isEmpty()) throw new ImageServer.Answer("No host");
-        if (host.indexOf(':') < 0 && !IPV4.matcher(host).matches()) return;
-        InetAddress address = InetAddress.getByName(host);
+        if (onDomain(host, "syncforreddit.com")) throw new ImageServer.Answer("Sync's server: " + host);
+        InetAddress address;
+        if (DIGITS_AND_DOTS.matcher(host).matches()) {
+            address = ipv4(host);
+            if (address == null) throw new ImageServer.Answer("Not a plain address: " + host);
+        } else if (host.indexOf(':') >= 0) {
+            try {
+                // A literal: Java never looks up a host with a ':'.
+                address = InetAddress.getByName(host);
+            } catch (IOException error) {
+                throw new ImageServer.Answer("Not an address: " + host, error);
+            }
+        } else {
+            return;
+        }
         if (!isPublic(address)) throw new ImageServer.Answer("Not a public address: " + host);
+    }
+
+    /** The dotted quad as an address, or null unless it is one: four numbers up to 255. */
+    private static InetAddress ipv4(String host) {
+        String[] parts = host.split("\\.", -1);
+        if (parts.length != 4) return null;
+        byte[] bytes = new byte[4];
+        for (int i = 0; i < 4; i++) {
+            if (parts[i].isEmpty() || parts[i].length() > 3) return null;
+            int part = Integer.parseInt(parts[i]);
+            if (part > 255) return null;
+            bytes[i] = (byte) part;
+        }
+        try {
+            return InetAddress.getByAddress(bytes);
+        } catch (IOException error) {
+            return null;
+        }
+    }
+
+    /** Whether the host is the domain or under it, ignoring case and a trailing dot. */
+    static boolean onDomain(String host, String domain) {
+        if (host == null) return false;
+        String name = host.toLowerCase(Locale.ROOT);
+        if (name.endsWith(".")) name = name.substring(0, name.length() - 1);
+        return name.equals(domain) || name.endsWith("." + domain);
     }
 
     /** Whether every address a name has is public: OkHttp may connect to any of them. */
@@ -284,13 +321,44 @@ public final class WebsitePreviews {
         return authority != null && !authority.isEmpty() && authority.indexOf('@') < 0;
     }
 
-    /** The link as a URI, with the characters URI refuses and OkHttp and browsers allow (a space, '|') escaped. */
+    /** The host in the URI's authority, without user info or port, or null. */
+    private static String hostOf(URI uri) {
+        if (uri == null || uri.getRawAuthority() == null) return null;
+        String host = uri.getRawAuthority();
+        host = host.substring(host.lastIndexOf('@') + 1);
+        int port = host.lastIndexOf(':');
+        return port > host.lastIndexOf(']') ? host.substring(0, port) : host;
+    }
+
+    /**
+     * The link as a URI, with what URI refuses and OkHttp and browsers allow escaped: a space, '|', a '[' outside the
+     * host, a '%' that starts no escape, a second '#'.
+     */
     private static URI uri(String link) {
         if (link == null) return null;
-        StringBuilder escaped = new StringBuilder(link.length());
-        for (byte b : link.getBytes(StandardCharsets.UTF_8)) {
-            int c = b & 0xff;
-            if (c <= 0x20 || c >= 0x7f || "\"<>\\^`{|}".indexOf(c) >= 0) {
+        byte[] bytes = link.getBytes(StandardCharsets.UTF_8);
+        int authority = link.indexOf("://");
+        int authorityEnd = bytes.length;
+        if (authority >= 0) {
+            authority += 3;
+            for (int i = authority; i < bytes.length; i++) {
+                if (bytes[i] == '/' || bytes[i] == '?' || bytes[i] == '#') {
+                    authorityEnd = i;
+                    break;
+                }
+            }
+        }
+        StringBuilder escaped = new StringBuilder(bytes.length);
+        boolean fragment = false;
+        for (int i = 0; i < bytes.length; i++) {
+            int c = bytes[i] & 0xff;
+            boolean inHost = authority >= 0 && i >= authority && i < authorityEnd;
+            boolean escape = c <= 0x20 || c >= 0x7f || "\"<>\\^`{|}".indexOf(c) >= 0
+                    || ((c == '[' || c == ']') && !inHost)
+                    || (c == '%' && !(i + 2 < bytes.length && isHex(bytes[i + 1]) && isHex(bytes[i + 2])))
+                    || (c == '#' && fragment);
+            if (c == '#') fragment = true;
+            if (escape) {
                 escaped.append('%').append(Character.toUpperCase(Character.forDigit(c >> 4, 16)))
                         .append(Character.toUpperCase(Character.forDigit(c & 0xf, 16)));
             } else {
@@ -302,5 +370,9 @@ public final class WebsitePreviews {
         } catch (Exception error) {
             return null;
         }
+    }
+
+    private static boolean isHex(byte b) {
+        return Character.digit(b, 16) >= 0;
     }
 }
