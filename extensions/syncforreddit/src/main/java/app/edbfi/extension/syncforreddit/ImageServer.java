@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.ProxySelector;
+import java.net.URI;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.LinkedHashMap;
@@ -134,13 +135,15 @@ public final class ImageServer implements Interceptor {
      */
     private static void checkHop(HttpUrl url) throws IOException {
         WebsitePreviews.checkHost(url.host());
-        // Asked as OkHttp's RouteSelector asks: uri() escapes what java.net.URI refuses, and no selector or no answer
-        // means a direct connection.
+        // Asked as OkHttp's RouteSelector asks: uri() escapes what java.net.URI refuses, and no selector, no host URI
+        // can parse (an underscore) or no answer means a direct connection.
         ProxySelector selector = ProxySelector.getDefault();
         if (selector == null) return;
         List<Proxy> proxies;
         try {
-            proxies = selector.select(url.uri());
+            URI uri = url.uri();
+            if (uri.getHost() == null) return;
+            proxies = selector.select(uri);
         } catch (RuntimeException error) {
             throw new Answer("No route to check: " + url, error);
         }

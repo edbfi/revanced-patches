@@ -26,7 +26,7 @@ public final class WebsitePreviews {
     /** How long a website preview may take to load its page and its image's headers. */
     static final long DEADLINE_MS = 15_000;
     /** How long reading a page may take once it answers: a site that slow is remembered. */
-    static final long PAGE_READ_MS = 5_000;
+    static final long PAGE_READ_MS = 10_000;
 
     // The meta tags that name a page's preview image, best first.
     private static final String[] IMAGE_TAGS = {"og:image", "og:image:secure_url", "og:image:url", "twitter:image", "twitter:image:src"};
