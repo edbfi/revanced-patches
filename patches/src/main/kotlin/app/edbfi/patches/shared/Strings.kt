@@ -22,7 +22,7 @@ import com.android.tools.smali.dexlib2.immutable.reference.ImmutableStringRefere
  * and checks everything it needs, then [apply]s its edits.
  */
 internal class Edit(
-    /** How many instructions the edit changes. */
+    /** How many places the edit changes. */
     val count: Int,
     private val change: () -> Unit,
 ) {
@@ -32,14 +32,15 @@ internal class Edit(
 /**
  * Rewrites the method's string literals: [transform] returns the new value, or null to keep a literal. The edit holds
  * the literals' indices, so apply it before edits that insert instructions into the same method. It reads each literal
- * again when applied, so a second rewrite of the same literal sees the first one's result.
+ * again when applied, so a second rewrite of the same literal sees the first one's result, and must still change it.
  */
 internal fun MutableMethod.rewriteStrings(transform: (String) -> String?): Edit {
     val indices = instructions.withIndex().filter { (_, instruction) -> instruction.rewritten(transform) != null }.map { it.index }
     return Edit(indices.size) {
         for (index in indices) {
             val instruction = getInstruction<Instruction>(index)
-            val new = instruction.rewritten(transform) ?: continue
+            // Only a rewrite of the same literal applied first, in the wrong order, can get here.
+            val new = instruction.rewritten(transform) ?: throw PatchException("The literal at $index in $name changed before its rewrite")
             val register = (instruction as OneRegisterInstruction).registerA
             replaceInstruction(index, constString(register, new, jumbo = instruction.opcode == Opcode.CONST_STRING_JUMBO))
         }
