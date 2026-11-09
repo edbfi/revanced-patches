@@ -1,10 +1,23 @@
 # edbfi ReVanced patches
 
-[ReVanced](https://revanced.app) patches for Android apps.
+[![CI](https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml)
 
-## Use
+[ReVanced](https://revanced.app) patches for Android apps, in one signed bundle.
 
-**ReVanced Manager:** add a patches source with this URL:
+## Supported apps
+
+| App | Package | Tested version |
+| --- | --- | --- |
+| [Sync for Reddit](#sync-for-reddit) | `com.laurencedawson.reddit_sync` | `v23.06.30-13:39` |
+
+Patch the tested version. On another version, a patch that can't find the code it changes fails to apply instead of
+breaking the app.
+
+## Install
+
+### ReVanced Manager
+
+Add a patches source with this URL:
 
 ```text
 https://github.com/edbfi/revanced-patches/releases/latest/download/patches-bundle.json
@@ -12,7 +25,9 @@ https://github.com/edbfi/revanced-patches/releases/latest/download/patches-bundl
 
 Manager doesn't verify signatures. To check a bundle, use the CLI.
 
-**ReVanced CLI:** download `patches-X.Y.Z.rvp`, `.rvp.asc` and `.rvp.sigstore.json` from a
+### ReVanced CLI
+
+Download `patches-X.Y.Z.rvp`, `.rvp.asc` and `.rvp.sigstore.json` from a
 [release](https://github.com/edbfi/revanced-patches/releases) and the [public key](keys/release-signing.asc), then:
 
 ```sh
@@ -24,37 +39,46 @@ java -jar revanced-cli.jar patch \
 
 The key's fingerprint is `7B40 A51F C15C 376F 09D1  6979 893C 92F2 3E64 7FC8`.
 
-## Patches
+## App details
 
 ### Sync for Reddit
 
-Tested on `com.laurencedawson.reddit_sync` `v23.06.30-13:39`.
+#### Patches
 
-| Patch | What it does |
-| --- | --- |
-| Spoof client | Logs in and browses with another app's Reddit OAuth client; Reddit no longer accepts Sync's. |
-| Disable ads | Removes ads and the ad consent form, and keeps the ad SDKs from starting. |
-| Disable Sync for Lemmy bottom sheet | Removes the Sync for Lemmy promotion that shows at every start. |
-| Fix /s/ links | Opens Reddit share links (/s/) as the post they point to, from the app and from other apps. |
-| Fix Redgifs | Fixes Redgifs videos not loading. |
-| Fix post thumbnails | Fixes post thumbnails not loading. |
-| Fix video downloads | Fixes downloaded Reddit videos having only audio. |
-| Fix View more comments | Fixes "View more" not loading further comments. |
-| Fix galleries | Fixes Reddit galleries failing to open. |
-| Fix Other discussions | Fixes "Other discussions" failing to load, by searching Reddit for the link instead. |
-| Fix Imgur | Fixes Imgur albums failing to open, album previews in comments and posts staying blank, and Imgur uploads failing. |
-| Use /user/ endpoint (off by default) | Requests user profiles from /user/ instead of /u/. Not needed today: Reddit redirects /u/ to /user/, and the app follows the redirect. |
+| Patch | What it does | Default |
+| --- | --- | --- |
+| Spoof client | Restores login and browsing by using another app's Reddit OAuth client. | On |
+| Disable ads | Removes ads and the ad consent form, and keeps the ad SDKs from starting. | On |
+| Disable Sync for Lemmy bottom sheet | Removes the Sync for Lemmy promotion that shows at every start. | On |
+| Fix /s/ links | Opens Reddit share links (/s/) as the post they point to, from the app and from other apps. | On |
+| Fix Redgifs | Fixes Redgifs videos not loading. | On |
+| Fix post thumbnails | Fixes post thumbnails not loading. | On |
+| Fix video downloads | Fixes downloaded Reddit videos having only audio. | On |
+| Fix View more comments | Fixes "View more" not loading further comments. | On |
+| Fix galleries | Fixes Reddit galleries failing to open. | On |
+| Fix Other discussions | Fixes "Other discussions" failing to load, by searching Reddit for the link instead. | On |
+| Fix Imgur | Fixes Imgur albums failing to open, album previews in comments and posts staying blank, and Imgur uploads failing. | On |
+| Use /user/ endpoint | Requests user profiles from /user/ instead of /u/. Not needed today: Reddit redirects /u/ to /user/, and the app follows the redirect. | Off |
 
-Spoof client defaults to [RedReader](https://github.com/QuantumBadger/RedReader)'s client. If Reddit stops accepting
-it, set all three options to another "installed app" client: `OAuth client ID`, `Redirect URI` (the one registered
-for that ID) and `User-Agent` (the one that app sends). Then remove your accounts in Sync and add them again: their
-tokens belong to the old client.
+#### Options
 
-Fix Imgur defaults to RedReader's Imgur client ID. If Imgur stops accepting it, set `Imgur client ID` to another.
+- **Spoof client** uses [RedReader](https://github.com/QuantumBadger/RedReader)'s public Reddit client by default,
+  whose rate limit every RedReader user shares. If Reddit stops accepting it, set all three options to another
+  "installed app" client: `OAuth client ID`, `Redirect URI` (the one registered for that ID) and `User-Agent` (the one
+  that app sends). Then remove your accounts in Sync and add them again: their tokens belong to the old client.
+- **Fix Imgur** uses RedReader's public Imgur client ID by default, whose quota is shared too. If Imgur stops
+  accepting it, set `Imgur client ID` to another.
+
+#### Known issues
+
+- **Previews of Tenor, Gfycat and other website links in comments and posts stay blank.** They came from Sync's own
+  image server, which is gone. Website previews were a Sync Ultra feature.
+- **Leave "Enhanced autoplay" off (the default).** It plays Redgifs and Gfycat videos through the same server.
+- **Other discussions can miss a post of the link, or show an extra one.** It is a Reddit search for the link now.
 
 ## Contribute
 
-See [AGENTS.md](AGENTS.md).
+Build commands, patch rules and commit conventions are in [AGENTS.md](AGENTS.md).
 
 ## License
 
