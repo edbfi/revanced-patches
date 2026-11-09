@@ -10,8 +10,8 @@
 | --- | --- | --- |
 | [Sync for Reddit](#sync-for-reddit) | `com.laurencedawson.reddit_sync` | `v23.06.30-13:39` |
 
-Patch the tested version. On another version, a patch that can't find the code it changes fails to apply, and one
-that finds it may still misbehave.
+Patch the tested version. ReVanced Manager and the CLI skip these patches on other versions unless you force them, and
+other versions are untested.
 
 ## Install
 
@@ -75,7 +75,7 @@ The key's fingerprint is `7B40 A51F C15C 376F 09D1  6979 893C 92F2 3E64 7FC8`.
   image server, which no longer answers. Without Sync Ultra, Sync never showed website previews.
 - **Enhanced autoplay doesn't play Redgifs or Gfycat videos.** It plays them through the same server. Leave it off (the
   default).
-- **Other discussions can miss a post of the same link, or show one that isn't.** It searches Reddit for the link.
+- **"Other discussions" can miss a post of the same link, or show one that isn't.** It searches Reddit for the link.
 
 ## Contribute
 

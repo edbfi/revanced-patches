@@ -41,18 +41,24 @@ class ReadmeTest {
         }
     }
 
-    private fun code(cell: String) = Regex("`([^`]+)`").findAll(cell).map { it.groupValues[1] }.toSet()
+    /** The backticked values of a cell that holds nothing else: `a` or `a`, `b`. */
+    private fun code(cell: String): List<String> {
+        if (!cell.matches(Regex("`[^`]+`(, `[^`]+`)*"))) fail("Cell must be backticked values separated by \", \": $cell")
+        return Regex("`([^`]+)`").findAll(cell).map { it.groupValues[1] }.toList()
+    }
 
     /** GitHub's anchor for a heading: lowercase, punctuation other than '-' dropped, spaces as '-'. */
     private fun anchor(heading: String) = heading.lowercase().filter { it.isLetterOrDigit() || it == ' ' || it == '-' }.replace(' ', '-')
 
-    private val apps =
+    // Lazy, so a malformed table fails the test that reads it with its message, not the class's construction.
+    private val apps by lazy {
         table("## Supported apps", listOf("App", "Package", "Tested version")).map { (app, pkg, versions) ->
             val link = Regex("""^\[(.+)]\(#(.+)\)$""").find(app) ?: fail("Not a link to the app's section: $app")
             val (name, target) = link.destructured
             if (target != anchor(name)) fail("The link to $name goes to #$target, but its heading's anchor is #${anchor(name)}")
-            App(name, code(pkg).singleOrNull() ?: fail("Package cell needs one `package`: $pkg"), code(versions))
+            App(name, code(pkg).singleOrNull() ?: fail("Package cell needs one `package`: $pkg"), code(versions).toSet())
         }
+    }
 
     /** The lines of the app's `### <name>` section, up to the next heading of that level or higher. */
     private fun section(app: App): List<String> {
@@ -70,6 +76,7 @@ class ReadmeTest {
                 .flatMap { it.compatiblePackages.orEmpty() }
                 .groupBy({ it.first }, { it.second.orEmpty() })
                 .mapValues { (_, versions) -> versions.flatten().toSet() }
+        assertEquals(apps.map { it.pkg }.distinct().size, apps.size, "Supported apps lists an app twice")
         assertEquals(bundle, apps.associate { it.pkg to it.versions })
     }
 
@@ -88,7 +95,7 @@ class ReadmeTest {
                         },
                     )
                 }
-            val bundle = patchesOf(app).filter { it.name != null }.map { Row(it.name!!, it.description.orEmpty(), it.use) }
+            val bundle = patchesOf(app).map { Row(it.name!!, it.description.orEmpty(), it.use) }
             assertEquals(bundle.size, rows.size, "${app.name}: one README row per patch")
             assertEquals(bundle.toSet(), rows.toSet(), "${app.name}: README patch table")
         }
