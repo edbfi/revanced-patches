@@ -73,6 +73,10 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 - Docs hold only what the code can't say: this file, `README.md` for users, and short comments next to the code
   they explain. No reports, plans or notes in the repo: evidence goes in the PR body.
 - When a fact changes, fix or delete every other statement of it; never append history.
+- `README.md` lists each app in Supported apps and gives it a section under App details: Patches (name and description
+  as in the code, On/Off default), Options (what they are for, not their defaults) and Known issues (bold symptom, then
+  cause; deleted once fixed). Leave out an empty Options or Known issues. `ReadmeTest` checks the tables and option
+  names against the bundle.
 - `CLAUDE.md` is a symlink to this file.
 
 ## Commits and releases
