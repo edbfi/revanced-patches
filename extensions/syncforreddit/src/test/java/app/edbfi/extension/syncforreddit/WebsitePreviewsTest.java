@@ -42,6 +42,15 @@ public class WebsitePreviewsTest {
         assertNull(WebsitePreviews.imageIn("<meta property=\"og:title\" content=\"x\">", PAGE));
     }
 
+    @Test(timeout = 2000)
+    public void readsAHostilePageInLinearTime() {
+        String unclosed = "<meta ".repeat(43_690);
+        assertNull(WebsitePreviews.imageIn(unclosed, PAGE));
+        assertNull(WebsitePreviews.imageIn("<metadata property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
+        assertEquals("https://x.org/a.png", WebsitePreviews.imageIn(
+                "<meta>".repeat(40_000) + "<meta/property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
+    }
+
     @Test
     public void readsAttributesInAnyOrder() {
         assertEquals("https://cdn.example.org/a.png", WebsitePreviews.imageIn(
@@ -58,6 +67,8 @@ public class WebsitePreviewsTest {
                 "<meta property=\"og:image\" content=\"card.png\">", PAGE));
         assertEquals("https://cdn.example.org/card.png", WebsitePreviews.imageIn(
                 "<meta property=\"og:image\" content=\"//cdn.example.org/card.png\">", PAGE));
+        assertEquals("https://[2606:4700::1111]/card.png", WebsitePreviews.imageIn(
+                "<meta property=\"og:image\" content=\"//[2606:4700::1111]/card.png\">", PAGE));
         assertEquals("https://cdn.example.org/a%20b.png", WebsitePreviews.imageIn(
                 "<meta property=\"og:image\" content=\"https://cdn.example.org/a b.png\">", PAGE));
         assertEquals("https://cdn.example.org/&#x/", WebsitePreviews.unescape("https://cdn.example.org/&#x/"));

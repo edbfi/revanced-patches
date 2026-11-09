@@ -28,7 +28,6 @@ public final class WebsitePreviews {
 
     // The meta tags that name a page's preview image, best first.
     private static final String[] IMAGE_TAGS = {"og:image", "og:image:secure_url", "og:image:url", "twitter:image", "twitter:image:src"};
-    private static final Pattern META = Pattern.compile("<meta\\b[^>]*>", Pattern.CASE_INSENSITIVE);
     private static final Pattern ATTRIBUTE = Pattern.compile(
             "([A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
     private static final Pattern ENTITY = Pattern.compile("&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z]{2,6});");
@@ -107,11 +106,16 @@ public final class WebsitePreviews {
     /** The preview image the page's meta tags name, resolved against the page's URL and made https, or null. */
     static String imageIn(String html, String pageUrl) {
         Map<String, String> found = new HashMap<>();
-        Matcher meta = META.matcher(html);
-        while (meta.find()) {
+        // Found by hand, not by a pattern: a page of unclosed "<meta " would make one rescan the rest for each.
+        String lower = html.toLowerCase(Locale.ROOT);
+        for (int start = lower.indexOf("<meta"); start >= 0; start = lower.indexOf("<meta", start + 1)) {
+            int after = start + 5;
+            if (after < lower.length() && Character.isLetterOrDigit(lower.charAt(after))) continue;
+            int end = lower.indexOf('>', after);
+            if (end < 0) break;
             String key = null;
             String content = null;
-            Matcher attribute = ATTRIBUTE.matcher(meta.group());
+            Matcher attribute = ATTRIBUTE.matcher(html.substring(start, end + 1));
             while (attribute.find()) {
                 String name = attribute.group(1).toLowerCase(Locale.ROOT);
                 String value = attribute.group(2) != null ? attribute.group(2)
@@ -337,10 +341,16 @@ public final class WebsitePreviews {
     private static URI uri(String link) {
         if (link == null) return null;
         byte[] bytes = link.getBytes(StandardCharsets.UTF_8);
-        int authority = link.indexOf("://");
+        // Where the host starts: "https://host", or "//host" relative to the page's scheme. The scheme is ASCII, so a
+        // character's index is its byte's.
+        int authority = -1;
+        if (link.startsWith("//")) {
+            authority = 2;
+        } else if (link.indexOf("://") > 0) {
+            authority = link.indexOf("://") + 3;
+        }
         int authorityEnd = bytes.length;
         if (authority >= 0) {
-            authority += 3;
             for (int i = authority; i < bytes.length; i++) {
                 if (bytes[i] == '/' || bytes[i] == '?' || bytes[i] == '#') {
                     authorityEnd = i;
