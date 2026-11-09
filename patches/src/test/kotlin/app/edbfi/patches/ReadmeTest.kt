@@ -29,6 +29,7 @@ class ReadmeTest {
         val start = lines.indexOf(heading).takeIf { it >= 0 } ?: fail("README has no \"$heading\" where expected")
         val rows =
             lines.drop(start + 1)
+                .takeWhile { !it.startsWith("#") || it.startsWith("|") }
                 .dropWhile { !it.startsWith("|") }
                 .takeWhile { it.startsWith("|") }
                 .map { line -> line to line.trim().removePrefix("|").removeSuffix("|").split(" | ").map { it.trim() } }
@@ -45,10 +46,11 @@ class ReadmeTest {
     private fun code(cell: String): List<String> {
         if (!cell.matches(Regex("`[^`]+`(, `[^`]+`)*"))) fail("Cell must be backticked values separated by \", \": $cell")
         return Regex("`([^`]+)`").findAll(cell).map { it.groupValues[1] }.toList()
+            .also { if (it.distinct().size != it.size) fail("Cell lists a value twice: $cell") }
     }
 
-    /** GitHub's anchor for a heading: lowercase, punctuation other than '-' dropped, spaces as '-'. */
-    private fun anchor(heading: String) = heading.lowercase().filter { it.isLetterOrDigit() || it == ' ' || it == '-' }.replace(' ', '-')
+    /** GitHub's anchor for a heading: lowercase, punctuation other than '-' and '_' dropped, spaces as '-'. */
+    private fun anchor(heading: String) = heading.lowercase().filter { it.isLetterOrDigit() || it in " -_" }.replace(' ', '-')
 
     // Lazy, so a malformed table fails the test that reads it with its message, not the class's construction.
     private val apps by lazy {
@@ -77,6 +79,8 @@ class ReadmeTest {
                 .groupBy({ it.first }, { it.second.orEmpty() })
                 .mapValues { (_, versions) -> versions.flatten().toSet() }
         assertEquals(apps.map { it.pkg }.distinct().size, apps.size, "Supported apps lists an app twice")
+        // Same-named sections would get anchors GitHub suffixes with -1, which the link check can't follow.
+        assertEquals(apps.map { it.name }.distinct().size, apps.size, "Supported apps uses a name twice")
         assertEquals(bundle, apps.associate { it.pkg to it.versions })
     }
 

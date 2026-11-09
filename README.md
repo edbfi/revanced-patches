@@ -73,9 +73,9 @@ The key's fingerprint is `7B40 A51F C15C 376F 09D1  6979 893C 92F2 3E64 7FC8`.
 
 - **Previews of Tenor, Gfycat and other website links in comments and posts stay blank.** They came from Sync's own
   image server, which no longer answers. Without Sync Ultra, Sync never showed website previews.
-- **Enhanced autoplay doesn't play Redgifs or Gfycat videos.** It plays them through the same server. Leave it off (the
+- **Enhanced autoplay doesn't play Redgifs or Gfycat videos.** It plays them through Sync's image server too. Leave it off (the
   default).
-- **"Other discussions" can miss a post of the same link, or show one that isn't.** It searches Reddit for the link.
+- **"Other discussions" can miss a post of the same link, or show a post of a different one.** It searches Reddit for the link.
 
 ## Contribute
 
