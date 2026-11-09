@@ -11,12 +11,24 @@ public class Request {
         throw new UnsupportedOperationException("stub");
     }
 
+    public final boolean isHttps() {
+        throw new UnsupportedOperationException("stub");
+    }
+
+    public final <T> T tag(Class<? extends T> type) {
+        throw new UnsupportedOperationException("stub");
+    }
+
     public static class Builder {
         public Builder url(String url) {
             throw new UnsupportedOperationException("stub");
         }
 
         public Builder header(String name, String value) {
+            throw new UnsupportedOperationException("stub");
+        }
+
+        public <T> Builder tag(Class<? super T> type, T tag) {
             throw new UnsupportedOperationException("stub");
         }
 

@@ -9,6 +9,7 @@ import static org.junit.Assert.fail;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import org.json.JSONException;
@@ -26,7 +27,7 @@ public class ImageServerTest {
 
     private static IOException failure(String url, boolean imgur, Imgur.Api api) {
         try {
-            ImageServer.thumbnailUrl(url, imgur ? api : null, null);
+            ImageServer.thumbnailUrl(url, imgur ? api : null, null, null);
         } catch (IOException expected) {
             return expected;
         }
@@ -38,7 +39,7 @@ public class ImageServerTest {
     public void loadsAnAlbumPreviewFromImgur() throws IOException {
         List<String> asked = new ArrayList<>();
         Imgur.Api api = answering(200, "{\"data\":{\"cover\":\"CoVeR12\"}}", asked);
-        assertEquals("https://i.imgur.com/CoVeR12m.jpg", ImageServer.thumbnailUrl(ALBUM + "SrvAlb1", api, null));
+        assertEquals("https://i.imgur.com/CoVeR12m.jpg", ImageServer.thumbnailUrl(ALBUM + "SrvAlb1", api, null, null));
         assertEquals(1, asked.size());
     }
 
@@ -60,11 +61,11 @@ public class ImageServerTest {
             return new Http.Reply(200, body.getBytes(StandardCharsets.UTF_8), new HashMap<>());
         };
         String preview = "https://ap.syncforreddit.com/image?url=https://tenor.com/view/x-gif-1";
-        assertEquals("https://media.tenor.com/AbCdAAAAN/x.png", ImageServer.thumbnailUrl(preview, null, tenor));
+        assertEquals("https://media.tenor.com/AbCdAAAAN/x.png", ImageServer.thumbnailUrl(preview, null, tenor, null));
         assertEquals(1, asked.size());
         // Without Fix Tenor previews, it fails as before.
         try {
-            ImageServer.thumbnailUrl(preview, null, null);
+            ImageServer.thumbnailUrl(preview, null, null, null);
             fail("Expected an IOException");
         } catch (IOException expected) {
             assertEquals(1, asked.size());
@@ -102,5 +103,65 @@ public class ImageServerTest {
         })));
         // Nothing handles it: costs nothing to fail again.
         assertFalse(ImageServer.worthRemembering(failure("https://ap.syncforreddit.com/image?url=gfycat-x", true, answering(200, "{}", asked))));
+    }
+
+    private static WebsitePreviews.Pages page(String html, List<String> asked) {
+        return link -> {
+            asked.add(link);
+            return new WebsitePreviews.Page(link, "text/html; charset=utf-8", html.getBytes(StandardCharsets.UTF_8));
+        };
+    }
+
+    @Test
+    public void loadsAWebsitePreviewFromThePage() throws IOException {
+        List<String> asked = new ArrayList<>();
+        String html = "<head><meta property=\"og:image\" content=\"/card.png\"></head>";
+        String preview = "https://ap.syncforreddit.com/image?url=https://example.org/post?id=1";
+        assertEquals("https://example.org/card.png", ImageServer.thumbnailUrl(preview, null, null, page(html, asked)));
+        assertEquals(Collections.singletonList("https://example.org/post?id=1"), asked);
+    }
+
+    @Test
+    public void leavesOtherPreviewsAloneForWebsitePreviews() {
+        List<String> asked = new ArrayList<>();
+        WebsitePreviews.Pages pages = page("<meta property=\"og:image\" content=\"https://example.org/x.png\">", asked);
+        // Tenor links are Fix Tenor previews', and the rest aren't https links.
+        for (String link : new String[] {"https://tenor.com/view/x-gif-1", "gfycat-x", "imgur-album-SrvAlb8", "http://example.org/"}) {
+            try {
+                ImageServer.thumbnailUrl("https://ap.syncforreddit.com/image?url=" + link, null, null, pages);
+                fail("Expected an IOException for " + link);
+            } catch (IOException expected) {
+                assertFalse(ImageServer.worthRemembering(expected));
+            }
+        }
+        assertTrue(asked.isEmpty());
+    }
+
+    @Test
+    public void remembersPagesWithoutAnImageButNotLostConnections() {
+        String preview = "https://ap.syncforreddit.com/image?url=https://example.org/";
+        WebsitePreviews.Pages bare = page("<head><title>x</title></head>", new ArrayList<>());
+        WebsitePreviews.Pages offline = link -> {
+            throw new IOException("offline");
+        };
+        // What the guard throws for a private address or an http hop.
+        WebsitePreviews.Pages refused = link -> {
+            throw new IOException("Preview refused", new IllegalStateException("Not a public address"));
+        };
+        WebsitePreviews.Pages pdf = link -> new WebsitePreviews.Page(link, "application/pdf", new byte[0]);
+        assertTrue(ImageServer.worthRemembering(websiteFailure(preview, bare)));
+        assertFalse(ImageServer.worthRemembering(websiteFailure(preview, offline)));
+        assertTrue(ImageServer.worthRemembering(websiteFailure(preview, refused)));
+        assertTrue(ImageServer.worthRemembering(websiteFailure(preview, pdf)));
+    }
+
+    private static IOException websiteFailure(String url, WebsitePreviews.Pages pages) {
+        try {
+            ImageServer.thumbnailUrl(url, null, null, pages);
+        } catch (IOException expected) {
+            return expected;
+        }
+        fail("Expected an IOException for " + url);
+        return null;
     }
 }

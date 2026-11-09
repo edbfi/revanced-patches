@@ -8,6 +8,10 @@ public class OkHttpClient {
             throw new UnsupportedOperationException("stub");
         }
 
+        public final Builder addNetworkInterceptor(Interceptor interceptor) {
+        throw new UnsupportedOperationException("stub");
+        }
+
         public final OkHttpClient build() {
             throw new UnsupportedOperationException("stub");
         }
