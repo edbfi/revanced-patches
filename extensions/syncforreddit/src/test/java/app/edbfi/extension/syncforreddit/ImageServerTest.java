@@ -169,4 +169,21 @@ public class ImageServerTest {
         fail("Expected an IOException for " + url);
         return null;
     }
+
+    @Test
+    public void refusesPrivateAddressesOnlyWhileLoadingAWebsitePreview() throws IOException {
+        java.util.List<java.net.InetAddress> lan = Collections.singletonList(java.net.InetAddress.getByName("192.168.1.50"));
+        ImageServer.PreviewDns dns = new ImageServer.PreviewDns(host -> lan);
+        // Other images, such as a self-hosted Imgur proxy, resolve as before.
+        assertEquals(lan, dns.lookup("nas.example.org"));
+        ImageServer.PREVIEWING.set(Boolean.TRUE);
+        try {
+            dns.lookup("nas.example.org");
+            fail("Expected a private address to be refused");
+        } catch (ImageServer.RefusedHost expected) {
+            assertTrue(ImageServer.worthRemembering(expected));
+        } finally {
+            ImageServer.PREVIEWING.remove();
+        }
+    }
 }

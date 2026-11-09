@@ -62,7 +62,6 @@ public final class WebsitePreviews {
         Page fetch(String link) throws IOException;
     }
 
-
     private WebsitePreviews() {}
 
     /** Turned on by the "Enable Sync Ultra" patch. */
@@ -247,8 +246,9 @@ public final class WebsitePreviews {
     }
 
     /**
-     * Whether the address is on the public internet. Previews must never make the phone send a request to itself, its
-     * network or its carrier's: loopback, private, link-local, CGNAT, unique local, multicast and reserved addresses.
+     * Whether the address is outside the ranges kept for the phone itself, local networks and carriers: loopback,
+     * private, link-local, CGNAT, unique local, multicast and reserved. A device with a global IPv6 address looks
+     * public, even on the phone's own network; https and certificate checks keep a preview from sending it a request.
      */
     static boolean isPublic(InetAddress address) {
         if (address == null || address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()

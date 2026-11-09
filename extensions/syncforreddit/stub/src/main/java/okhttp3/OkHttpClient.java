@@ -17,11 +17,11 @@ public class OkHttpClient {
         }
 
         public final Builder addNetworkInterceptor(Interceptor interceptor) {
-        throw new UnsupportedOperationException("stub");
+            throw new UnsupportedOperationException("stub");
         }
 
         public final Builder dns(Dns dns) {
-        throw new UnsupportedOperationException("stub");
+            throw new UnsupportedOperationException("stub");
         }
 
         public final OkHttpClient build() {

@@ -3,11 +3,11 @@ package app.edbfi.extension.syncforreddit;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.ProxySelector;
 import java.net.URI;
-import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,7 +45,7 @@ public final class ImageServer implements Interceptor {
     };
 
     // Set while this thread loads a website preview: OkHttp looks hosts up on the call's thread, before connecting.
-    private static final ThreadLocal<Boolean> PREVIEWING = new ThreadLocal<>();
+    static final ThreadLocal<Boolean> PREVIEWING = new ThreadLocal<>();
     // Cancels a page fetch that runs past its deadline, however slowly the site sends.
     private static final ScheduledThreadPoolExecutor WATCHDOG = new ScheduledThreadPoolExecutor(1, task -> {
         Thread thread = new Thread(task, "WebsitePreviews watchdog");

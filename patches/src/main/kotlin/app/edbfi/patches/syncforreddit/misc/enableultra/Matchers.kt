@@ -54,10 +54,11 @@ private fun purchaseCheckCalledBy(method: Method): MethodReference? {
     }
 }
 
-private fun isCallTo(
-    reference: MethodReference,
+/** Whether [reference] names [method]. */
+internal fun isCallTo(
+    reference: MethodReference?,
     method: Method,
-) = reference.definingClass == method.definingClass && reference.name == method.name &&
+) = reference != null && reference.definingClass == method.definingClass && reference.name == method.name &&
     reference.parameterTypes == method.parameterTypes && reference.returnType == method.returnType
 
 /** The `()Z` getter of a Firebase Remote Config flag, which reads the flag's [key] from the app's copy. */

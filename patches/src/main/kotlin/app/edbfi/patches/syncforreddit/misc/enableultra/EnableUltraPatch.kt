@@ -106,12 +106,6 @@ private fun returnBoolean(
 
 private fun MethodReference.smali() = "$definingClass->$name(${parameterTypes.joinToString("")})$returnType"
 
-private fun isCallTo(
-    reference: MethodReference?,
-    method: Method,
-) = reference != null && reference.definingClass == method.definingClass && reference.name == method.name &&
-    reference.parameterTypes == method.parameterTypes && reference.returnType == method.returnType
-
 /** Makes the method call [instead] where it calls [from], which it must do [count] times. Both are static `()Z`. */
 private fun MutableMethod.callInstead(
     from: Method,
