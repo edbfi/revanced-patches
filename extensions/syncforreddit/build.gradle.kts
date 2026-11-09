@@ -18,3 +18,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
 }
+
+extension {
+    // Not the plugin's default, extensions/syncforreddit.rve: ReVanced's bundle has a file there too, and every loaded
+    // bundle shares one class loader. ExtensionPatch.kt reads it from this path.
+    name = "extensions/edbfi/syncforreddit.rve"
+}

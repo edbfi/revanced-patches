@@ -4,13 +4,16 @@ package app.edbfi.patches
 import app.revanced.patcher.patch.Patch
 import app.revanced.patcher.patch.loadPatches
 import java.io.File
+import java.util.zip.ZipFile
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class PatchMetadataTest {
+    private val bundle = File(System.getProperty("patches.bundle"))
+
     // loadPatches swallows load failures by default, which would pass an unloadable bundle as empty.
     private val patches: Set<Patch> =
-        loadPatches(File(System.getProperty("patches.bundle"))) { file, error ->
+        loadPatches(bundle) { file, error ->
             throw AssertionError("Couldn't load patches from $file", error)
         }
 
@@ -41,5 +44,24 @@ class PatchMetadataTest {
                 .filterValues { it > 1 }
                 .keys
         assertTrue(duplicates.isEmpty(), "Patch names used twice for the same app: $duplicates")
+    }
+
+    @Test
+    fun `every file in the bundle has a name no other bundle uses`() {
+        // ReVanced Manager and the CLI load every bundle through one class loader, so a file another bundle also has,
+        // such as ReVanced's extensions/syncforreddit.rve, can be read in place of ours.
+        val own = listOf("app/edbfi/", "extensions/edbfi/", "edbfi/")
+        val shared =
+            ZipFile(bundle).use { zip ->
+                zip
+                    .entries()
+                    .asSequence()
+                    .filterNot { it.isDirectory }
+                    .map { it.name }
+                    .filterNot { name ->
+                        name.startsWith("META-INF/") || Regex("classes\\d*\\.dex").matches(name) || own.any(name::startsWith)
+                    }.toList()
+            }
+        assertTrue(shared.isEmpty(), "Bundle files outside $own, which another bundle could shadow: $shared")
     }
 }
