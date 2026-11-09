@@ -7,12 +7,20 @@ public class OkHttpClient {
         throw new UnsupportedOperationException("stub");
     }
 
+    public Builder newBuilder() {
+        throw new UnsupportedOperationException("stub");
+    }
+
     public static class Builder {
         public final Builder addInterceptor(Interceptor interceptor) {
             throw new UnsupportedOperationException("stub");
         }
 
         public final Builder addNetworkInterceptor(Interceptor interceptor) {
+        throw new UnsupportedOperationException("stub");
+        }
+
+        public final Builder dns(Dns dns) {
         throw new UnsupportedOperationException("stub");
         }
 

@@ -7,10 +7,8 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
-import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -62,11 +60,6 @@ public final class WebsitePreviews {
     /** Fetches the head of a page, refusing private addresses; the image client in the app, a fake in tests. */
     interface Pages {
         Page fetch(String link) throws IOException;
-    }
-
-    /** Resolves a host name; the image client's own DNS in the app, so its DNS-over-HTTPS setting holds. */
-    interface Lookup {
-        List<InetAddress> lookup(String host) throws IOException;
     }
 
 
@@ -239,21 +232,22 @@ public final class WebsitePreviews {
     }
 
     /**
-     * Refuses a host, before anything connects to it, unless every address it has is public. `host` is canonical, as
-     * OkHttp gives it: an address is never looked up, so a name can't stand for one.
+     * Refuses an address given as a host, before anything connects to it. `host` is canonical, as OkHttp gives it.
+     * OkHttp looks a name up, and {@link ImageServer} checks what its DNS answers; it never looks up an address.
      */
-    static void checkHost(String host, Lookup lookup) throws IOException {
+    static void checkLiteral(String host) throws IOException {
         if (host == null || host.isEmpty()) throw new ImageServer.Answer("No host");
-        List<InetAddress> addresses;
-        if (host.indexOf(':') >= 0 || IPV4.matcher(host).matches()) {
-            addresses = Collections.singletonList(InetAddress.getByName(host));
-        } else {
-            addresses = lookup.lookup(host);
-        }
-        if (addresses == null || addresses.isEmpty()) throw new UnknownHostException(host);
+        if (host.indexOf(':') < 0 && !IPV4.matcher(host).matches()) return;
+        InetAddress address = InetAddress.getByName(host);
+        if (!isPublic(address)) throw new ImageServer.Answer("Not a public address: " + host);
+    }
+
+    /** Whether every address a name has is public: OkHttp may connect to any of them. */
+    static boolean allPublic(List<InetAddress> addresses) {
         for (InetAddress address : addresses) {
-            if (!isPublic(address)) throw new ImageServer.Answer("Not a public address (" + address + "): " + host);
+            if (!isPublic(address)) return false;
         }
+        return true;
     }
 
     private static boolean isPublicIpv4(byte[] bytes, int at) {

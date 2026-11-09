@@ -6,7 +6,7 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.InetAddress;
-import java.util.Arrays;
+import java.net.UnknownHostException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,8 +42,8 @@ public final class ImageServer implements Interceptor {
         }
     };
 
-    // The image client's DNS, so a host is checked with the addresses OkHttp will connect to.
-    private static volatile Dns dns = host -> Arrays.asList(InetAddress.getAllByName(host));
+    // Set while this thread loads a website preview: OkHttp looks hosts up on the call's thread, before connecting.
+    private static final ThreadLocal<Boolean> PREVIEWING = new ThreadLocal<>();
     // Cancels a page fetch that runs past its deadline, however slowly the site sends.
     private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(task -> {
         Thread thread = new Thread(task, "WebsitePreviews watchdog");
@@ -56,8 +56,7 @@ public final class ImageServer implements Interceptor {
     /** Replaces the app's {@code build()} of its image client. */
     public static OkHttpClient build(OkHttpClient.Builder builder) {
         OkHttpClient client = builder.addInterceptor(new ImageServer()).addNetworkInterceptor(new Guard()).build();
-        dns = client.dns();
-        return client;
+        return client.newBuilder().dns(new PreviewDns(client.dns())).build();
     }
 
     /** Throws only IOException: anything else thrown here would crash the app on OkHttp's thread. */
@@ -74,6 +73,7 @@ public final class ImageServer implements Interceptor {
         ScheduledFuture<?> watchdog = website
                 ? WATCHDOG.schedule(() -> chain.call().cancel(), WebsitePreviews.DEADLINE_MS, TimeUnit.MILLISECONDS)
                 : null;
+        if (website) PREVIEWING.set(Boolean.TRUE);
         try {
             String image = thumbnailUrl(url, Imgur.isEnabled() ? Imgur.IMGUR : null, Tenor.isEnabled() ? Tenor.TENOR : null, pages);
             // The app's interceptor set the User-Agent it sends Reddit; other sites get the system's own.
@@ -81,7 +81,7 @@ public final class ImageServer implements Interceptor {
             // A website names any image: Guard checks it as it checked the page. Imgur and Tenor are known hosts.
             if (website) builder.tag(Guard.class, Guard.ON);
             Request thumbnail = builder.build();
-            if (website) WebsitePreviews.checkHost(thumbnail.url().host(), ImageServer::lookup);
+            if (website) WebsitePreviews.checkLiteral(thumbnail.url().host());
             Response response = chain.proceed(thumbnail);
             // Glide fails on any other answer: don't ask the page again each time the preview scrolls into view.
             if (response.code() / 100 != 2) failed(url);
@@ -93,6 +93,7 @@ public final class ImageServer implements Interceptor {
             throw failure;
         } finally {
             if (watchdog != null) watchdog.cancel(false);
+            PREVIEWING.remove();
         }
     }
 
@@ -113,13 +114,37 @@ public final class ImageServer implements Interceptor {
 
     static boolean worthRemembering(IOException failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof Answer) return true;
+            if (cause instanceof Answer || cause instanceof RefusedHost) return true;
         }
         return false;
     }
 
-    private static List<InetAddress> lookup(String host) throws IOException {
-        return dns.lookup(host);
+    /** An answer from {@link PreviewDns}, which may only throw this type. */
+    static final class RefusedHost extends UnknownHostException {
+        RefusedHost(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * The image client's DNS, which the app sets to DNS over HTTPS or leaves to the system. For a website preview, it
+     * refuses a host with any address that isn't public: what it answers is what OkHttp connects to.
+     */
+    static final class PreviewDns implements Dns {
+        private final Dns dns;
+
+        PreviewDns(Dns dns) {
+            this.dns = dns;
+        }
+
+        @Override
+        public List<InetAddress> lookup(String host) throws UnknownHostException {
+            List<InetAddress> addresses = dns.lookup(host);
+            if (Boolean.TRUE.equals(PREVIEWING.get()) && !WebsitePreviews.allPublic(addresses)) {
+                throw new RefusedHost("Not a public address: " + host + " " + addresses);
+            }
+            return addresses;
+        }
     }
 
     private static synchronized boolean failedRecently(String url) {
@@ -170,7 +195,7 @@ public final class ImageServer implements Interceptor {
         } catch (IllegalArgumentException error) {
             throw new IOException("Not a URL: " + link, error);
         }
-        WebsitePreviews.checkHost(page.url().host(), ImageServer::lookup);
+        WebsitePreviews.checkLiteral(page.url().host());
         long deadline = System.currentTimeMillis() + WebsitePreviews.DEADLINE_MS;
         // The client's connect timeout holds: this OkHttp reads only the read timeout from the chain.
         try (Response response = chain.withReadTimeout(PAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS).proceed(page)) {
@@ -189,8 +214,9 @@ public final class ImageServer implements Interceptor {
 
     /**
      * A network interceptor: checks each hop of a website preview once connected, before its request is sent. It must
-     * be https and reach a public address, and a redirect may only lead to a public host, checked before OkHttp
-     * follows it. Behind a proxy the address is the proxy's, so nothing is sent: the proxy would reach any host.
+     * be https and reach a public address. A redirect must lead to https and, if to an address, a public one, checked
+     * before OkHttp follows it; {@link PreviewDns} checks a name's. Behind a proxy the address is the proxy's, so
+     * nothing is sent: the proxy would reach any host.
      */
     static final class Guard implements Interceptor {
         static final Guard ON = new Guard();
@@ -215,7 +241,7 @@ public final class ImageServer implements Interceptor {
                 try {
                     if (next == null) throw new Answer("Not a URL: " + location);
                     if (!next.toString().startsWith("https://")) throw new Answer("Not https: " + next);
-                    WebsitePreviews.checkHost(next.host(), ImageServer::lookup);
+                    WebsitePreviews.checkLiteral(next.host());
                 } catch (IOException | RuntimeException refused) {
                     response.close();
                     throw refused instanceof IOException ? (IOException) refused : new IOException("Redirect failed", refused);

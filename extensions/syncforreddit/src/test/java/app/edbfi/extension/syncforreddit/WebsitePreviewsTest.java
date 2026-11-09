@@ -156,29 +156,28 @@ public class WebsitePreviewsTest {
     }
 
     @Test
-    public void checksHostsBeforeConnecting() throws IOException {
-        WebsitePreviews.Lookup publicDns = host -> Collections.singletonList(InetAddress.getByName("93.184.215.14"));
-        WebsitePreviews.Lookup rebinding = host -> Arrays.asList(InetAddress.getByName("93.184.215.14"), InetAddress.getByName("10.0.0.1"));
-        WebsitePreviews.Lookup never = host -> {
-            throw new AssertionError("Looked up an address: " + host);
-        };
-        WebsitePreviews.checkHost("example.org", publicDns);
-        WebsitePreviews.checkHost("1.1.1.1", never);
+    public void refusesPrivateAddressesGivenAsHosts() throws IOException {
+        WebsitePreviews.checkLiteral("example.org");
+        WebsitePreviews.checkLiteral("1.1.1.1");
+        WebsitePreviews.checkLiteral("2606:4700::1111");
         for (String host : new String[] {"127.0.0.1", "192.168.1.50", "::1", "fd00::1", ""}) {
-            assertRefused(host, never);
+            try {
+                WebsitePreviews.checkLiteral(host);
+            } catch (ImageServer.Answer expected) {
+                assertTrue(ImageServer.worthRemembering(expected));
+                continue;
+            }
+            throw new AssertionError("Expected " + host + " to be refused");
         }
-        // Every address a name has must be public: OkHttp may connect to any.
-        assertRefused("example.org", rebinding);
     }
 
-    private static void assertRefused(String host, WebsitePreviews.Lookup lookup) throws IOException {
-        try {
-            WebsitePreviews.checkHost(host, lookup);
-        } catch (ImageServer.Answer expected) {
-            assertTrue(ImageServer.worthRemembering(expected));
-            return;
-        }
-        throw new AssertionError("Expected " + host + " to be refused");
+    @Test
+    public void refusesNamesWithAnyPrivateAddress() throws IOException {
+        InetAddress open = InetAddress.getByName("93.184.215.14");
+        assertTrue(WebsitePreviews.allPublic(Collections.singletonList(open)));
+        // OkHttp may connect to any of a name's addresses.
+        assertFalse(WebsitePreviews.allPublic(Arrays.asList(open, InetAddress.getByName("10.0.0.1"))));
+        assertTrue(ImageServer.worthRemembering(new ImageServer.RefusedHost("x")));
     }
 
     /** Gives at most a few bytes per read, as a network stream may. */
