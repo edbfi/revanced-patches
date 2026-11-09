@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import org.json.JSONException;
 import org.junit.Test;
 
 public class ImageServerTest {
@@ -61,7 +62,7 @@ public class ImageServerTest {
         List<String> asked = new ArrayList<>();
         // A malformed answer would throw JSONException, a bad ID IllegalArgumentException, a missing album
         // IllegalStateException: any of them escaping the interceptor would crash the app.
-        assertTrue(failure(ALBUM + "SrvAlb3", true, answering(200, "not json", asked)).getCause() != null);
+        assertTrue(failure(ALBUM + "SrvAlb3", true, answering(200, "not json", asked)).getCause() instanceof JSONException);
         assertTrue(failure(ALBUM + "../x", true, answering(200, "{}", asked)).getCause() instanceof IllegalArgumentException);
         assertTrue(failure(ALBUM + "SrvAlb4", true, answering(404, "", asked)).getCause() instanceof IllegalStateException);
         assertTrue(failure(ALBUM + "SrvAlb5", true, (m, p, b, c) -> {

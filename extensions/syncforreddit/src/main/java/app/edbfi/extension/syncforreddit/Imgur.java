@@ -15,8 +15,8 @@ import org.json.JSONObject;
 /**
  * Answers the app's Imgur requests from Imgur's own API. The app loads albums and single images through its
  * developer's mirror, {@code images.syncforreddit.com}, which no longer exists, and uploads through a RapidAPI proxy
- * that refuses its key (401). Its parsers already read the API's shapes. Album previews in comments and posts, which came from
- * its developer's image server, become the album cover's thumbnail ({@link ImageServer}).
+ * that refuses its key (401). Its parsers already read the API's shapes. Album previews in comments and posts, which
+ * came from its developer's image server, become the album cover's thumbnail ({@link ImageServer}).
  */
 public final class Imgur {
     private static final String MIRROR = "https://images.syncforreddit.com/";
