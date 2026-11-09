@@ -134,13 +134,17 @@ public final class ImageServer implements Interceptor {
      */
     private static void checkHop(HttpUrl url) throws IOException {
         WebsitePreviews.checkHost(url.host());
+        // Asked as OkHttp's RouteSelector asks: uri() escapes what java.net.URI refuses, and no selector or no answer
+        // means a direct connection.
+        ProxySelector selector = ProxySelector.getDefault();
+        if (selector == null) return;
         List<Proxy> proxies;
         try {
-            // As OkHttp's RouteSelector asks: uri() escapes what java.net.URI refuses.
-            proxies = ProxySelector.getDefault().select(url.uri());
+            proxies = selector.select(url.uri());
         } catch (RuntimeException error) {
             throw new Answer("No route to check: " + url, error);
         }
+        if (proxies == null) return;
         for (Proxy proxy : proxies) {
             if (proxy.type() != Proxy.Type.DIRECT) throw new Answer("Behind a proxy: " + url);
         }
