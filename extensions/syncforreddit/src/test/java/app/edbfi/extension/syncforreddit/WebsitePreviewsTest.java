@@ -46,6 +46,9 @@ public class WebsitePreviewsTest {
     public void readsAHostilePageInLinearTime() {
         String unclosed = "<meta ".repeat(43_690);
         assertNull(WebsitePreviews.imageIn(unclosed, PAGE));
+        // One far '>' must not make each "<meta" read to it.
+        assertNull(WebsitePreviews.imageIn("<meta a=1 ".repeat(26_000) + ">", PAGE));
+        assertNull(WebsitePreviews.imageIn("<a ".repeat(80_000) + ">", PAGE));
         // Lowercasing "İ" makes two characters: indexes must come from the page itself.
         assertEquals("https://x.org/a.png", WebsitePreviews.imageIn(
                 "<title>İİİİ</title><META property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
@@ -70,6 +73,9 @@ public class WebsitePreviewsTest {
                 "<meta property=\"og:image\" content=\"card.png\">", PAGE));
         assertEquals("https://cdn.example.org/card.png", WebsitePreviews.imageIn(
                 "<meta property=\"og:image\" content=\"//cdn.example.org/card.png\">", PAGE));
+        // "://" in a path names no host there.
+        assertEquals("https://www.example.org/cdn/w=1200/https://[2606:4700::1111]/card.jpg", WebsitePreviews.imageIn(
+                "<meta property=\"og:image\" content=\"/cdn/w=1200/https://[2606:4700::1111]/card.jpg\">", PAGE).replace("%5B", "[").replace("%5D", "]"));
         assertEquals("https://[2606:4700::1111]/card.png", WebsitePreviews.imageIn(
                 "<meta property=\"og:image\" content=\"//[2606:4700::1111]/card.png\">", PAGE));
         assertEquals("https://cdn.example.org/a%20b.png", WebsitePreviews.imageIn(

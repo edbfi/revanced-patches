@@ -25,6 +25,8 @@ public final class WebsitePreviews {
     static final int MAX_HEAD_BYTES = 256 * 1024;
     /** How long a website preview may take to load its page and its image's headers. */
     static final long DEADLINE_MS = 15_000;
+    /** How long reading a page may take, before the watchdog's deadline: a site that slow is remembered. */
+    static final long PAGE_DEADLINE_MS = 10_000;
 
     // The meta tags that name a page's preview image, best first.
     private static final String[] IMAGE_TAGS = {"og:image", "og:image:secure_url", "og:image:url", "twitter:image", "twitter:image:src"};
@@ -32,6 +34,7 @@ public final class WebsitePreviews {
             "([A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
     private static final Pattern ENTITY = Pattern.compile("&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z]{2,6});");
     private static final Map<String, String> NAMED = new HashMap<>();
+    private static final Pattern SCHEME = Pattern.compile("[A-Za-z][A-Za-z0-9+.-]*://");
     private static final Pattern DIGITS_AND_DOTS = Pattern.compile("[0-9.]+");
 
     static {
@@ -106,14 +109,19 @@ public final class WebsitePreviews {
     /** The preview image the page's meta tags name, resolved against the page's URL and made https, or null. */
     static String imageIn(String html, String pageUrl) {
         Map<String, String> found = new HashMap<>();
-        // Found by hand, not by a pattern: a page of unclosed "<meta " would make one rescan the rest for each. Matched
-        // in the page itself: lowercasing can change its length ("İ"), and with it every index.
-        for (int start = html.indexOf('<'); start >= 0; start = html.indexOf('<', start + 1)) {
-            if (!html.regionMatches(true, start + 1, "meta", 0, 4)) continue;
-            int after = start + 5;
-            if (after < html.length() && Character.isLetterOrDigit(html.charAt(after))) continue;
-            int end = html.indexOf('>', after);
-            if (end < 0) break;
+        // Found by hand, not by a pattern, and matched in the page itself: lowercasing can change its length ("İ"), and
+        // with it every index. A tag runs from its '<' to its '>'; one another '<' opens first is unclosed and skipped.
+        // Each stretch between two '<' is read once.
+        for (int start = html.indexOf('<'), next; start >= 0; start = next) {
+            next = html.indexOf('<', start + 1);
+            int limit = next < 0 ? html.length() : next;
+            int end = -1;
+            for (int at = start + 1; at < limit && end < 0; at++) {
+                if (html.charAt(at) == '>') end = at;
+            }
+            boolean meta = html.regionMatches(true, start + 1, "meta", 0, 4)
+                    && (start + 5 >= html.length() || !Character.isLetterOrDigit(html.charAt(start + 5)));
+            if (end < 0 || !meta) continue;
             String key = null;
             String content = null;
             Matcher attribute = ATTRIBUTE.matcher(html.substring(start, end + 1));
@@ -346,10 +354,11 @@ public final class WebsitePreviews {
         // Where the host starts: "https://host", or "//host" relative to the page's scheme. The scheme is ASCII, so a
         // character's index is its byte's.
         int authority = -1;
+        Matcher scheme = SCHEME.matcher(link);
         if (link.startsWith("//")) {
             authority = 2;
-        } else if (link.indexOf("://") > 0) {
-            authority = link.indexOf("://") + 3;
+        } else if (scheme.lookingAt()) {
+            authority = scheme.end();
         }
         int authorityEnd = bytes.length;
         if (authority >= 0) {

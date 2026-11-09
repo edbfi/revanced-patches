@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
+import java.net.ProxySelector;
+import java.net.URI;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.LinkedHashMap;
@@ -13,7 +15,6 @@ import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import okhttp3.Call;
 import okhttp3.Dns;
 import okhttp3.HttpUrl;
@@ -75,14 +76,12 @@ public final class ImageServer implements Interceptor {
         WebsitePreviews.Pages pages = WebsitePreviews.isEnabled() ? link -> fetchHead(chain, link) : null;
         boolean website = pages != null && WebsitePreviews.isWebsite(url.substring(PREFIX.length()));
         // Every preview's call is to the image server's host, and OkHttp runs five at once per host: however slowly a
-        // site answers, its page and its image's headers get WebsitePreviews.DEADLINE_MS in all (DNS aside). A site
-        // that slow is remembered, so it doesn't hold a slot again each time its preview shows.
-        AtomicBoolean late = new AtomicBoolean();
+        // site answers, its page and its image's headers get WebsitePreviews.DEADLINE_MS in all. The watchdog only
+        // bounds the time: a lost connection looks the same, so only what a site sent is remembered.
         Call call = chain.call();
-        ScheduledFuture<?> watchdog = website ? WATCHDOG.schedule(() -> {
-            late.set(true);
-            call.cancel();
-        }, WebsitePreviews.DEADLINE_MS, TimeUnit.MILLISECONDS) : null;
+        ScheduledFuture<?> watchdog = website
+                ? WATCHDOG.schedule(call::cancel, WebsitePreviews.DEADLINE_MS, TimeUnit.MILLISECONDS)
+                : null;
         if (website) PREVIEWING.set(Boolean.TRUE);
         try {
             String image = thumbnailUrl(url, Imgur.isEnabled() ? Imgur.IMGUR : null, Tenor.isEnabled() ? Tenor.TENOR : null, pages);
@@ -91,7 +90,7 @@ public final class ImageServer implements Interceptor {
             // A website names any image: Guard checks it as it checked the page. Imgur and Tenor are known hosts.
             if (website) builder.tag(Guard.class, Guard.ON);
             Request thumbnail = builder.build();
-            if (website) WebsitePreviews.checkHost(thumbnail.url().host());
+            if (website) checkHop(thumbnail.url());
             Response response = chain.proceed(thumbnail);
             // Glide fails on any other answer: don't ask the page again each time the preview scrolls into view.
             if (response.code() / 100 != 2) failed(url);
@@ -99,8 +98,7 @@ public final class ImageServer implements Interceptor {
         } catch (Exception error) {
             // Anything else is an answer: an image URL OkHttp refuses, or OkHttp's own NumberFormatException for a huge
             // Retry-After.
-            IOException failure = late.get() ? new Answer("Preview took too long: " + url, error)
-                    : error instanceof IOException ? (IOException) error : new Answer("Preview failed: " + url, error);
+            IOException failure = error instanceof IOException ? (IOException) error : new Answer("Preview failed: " + url, error);
             if (worthRemembering(failure)) failed(url);
             throw failure;
         } finally {
@@ -129,6 +127,23 @@ public final class ImageServer implements Interceptor {
             if (cause instanceof Answer || cause instanceof RefusedHost) return true;
         }
         return false;
+    }
+
+    /**
+     * Checks a hop of a website preview before OkHttp connects: its host, and that it goes direct. Through a proxy,
+     * OkHttp would name the host to it in a CONNECT, and the proxy would reach any address.
+     */
+    private static void checkHop(HttpUrl url) throws IOException {
+        WebsitePreviews.checkHost(url.host());
+        List<Proxy> proxies;
+        try {
+            proxies = ProxySelector.getDefault().select(URI.create(url.toString()));
+        } catch (RuntimeException error) {
+            throw new Answer("No route to check: " + url, error);
+        }
+        for (Proxy proxy : proxies) {
+            if (proxy.type() != Proxy.Type.DIRECT) throw new Answer("Behind a proxy: " + url);
+        }
     }
 
     /** An answer from {@link PreviewDns}, which may only throw this type. */
@@ -207,8 +222,8 @@ public final class ImageServer implements Interceptor {
         } catch (IllegalArgumentException error) {
             throw new IOException("Not a URL: " + link, error);
         }
-        WebsitePreviews.checkHost(page.url().host());
-        long deadline = System.currentTimeMillis() + WebsitePreviews.DEADLINE_MS;
+        checkHop(page.url());
+        long deadline = System.currentTimeMillis() + WebsitePreviews.PAGE_DEADLINE_MS;
         // The client's connect timeout holds: this OkHttp reads only the read timeout from the chain.
         try (Response response = chain.withReadTimeout(PAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS).proceed(page)) {
             if (response.code() != 200) throw new Answer("The page answered " + response.code() + ": " + link);
@@ -253,7 +268,7 @@ public final class ImageServer implements Interceptor {
                 try {
                     if (next == null) throw new Answer("Not a URL: " + location);
                     if (!next.toString().startsWith("https://")) throw new Answer("Not https: " + next);
-                    WebsitePreviews.checkHost(next.host());
+                    checkHop(next);
                 } catch (IOException | RuntimeException refused) {
                     response.close();
                     throw refused instanceof IOException ? (IOException) refused : new IOException("Redirect failed", refused);
