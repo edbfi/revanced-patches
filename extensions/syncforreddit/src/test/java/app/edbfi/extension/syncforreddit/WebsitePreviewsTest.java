@@ -49,12 +49,25 @@ public class WebsitePreviewsTest {
         // One far '>' must not make each "<meta" read to it.
         assertNull(WebsitePreviews.imageIn("<meta a=1 ".repeat(26_000) + ">", PAGE));
         assertNull(WebsitePreviews.imageIn("<a ".repeat(80_000) + ">", PAGE));
+        // Nor may one tag's attributes: a long name, unclosed quotes.
+        assertNull(WebsitePreviews.imageIn("<meta " + "a".repeat(250_000) + ">", PAGE));
+        assertNull(WebsitePreviews.imageIn("<meta " + "a=\"".repeat(80_000) + ">", PAGE));
         // Lowercasing "İ" makes two characters: indexes must come from the page itself.
         assertEquals("https://x.org/a.png", WebsitePreviews.imageIn(
                 "<title>İİİİ</title><META property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
         assertNull(WebsitePreviews.imageIn("<metadata property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
         assertEquals("https://x.org/a.png", WebsitePreviews.imageIn(
                 "<meta>".repeat(40_000) + "<meta/property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
+    }
+
+    @Test
+    public void readsAttributes() {
+        java.util.Map<String, String> attributes = WebsitePreviews.attributes(
+                " property = 'og:image' CONTENT=https://x.org/a.png data-x name=\"a b\" content=second /");
+        assertEquals("og:image", attributes.get("property"));
+        assertEquals("https://x.org/a.png", attributes.get("content"));
+        assertEquals("", attributes.get("data-x"));
+        assertEquals("a b", attributes.get("name"));
     }
 
     @Test

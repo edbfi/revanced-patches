@@ -6,7 +6,6 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.ProxySelector;
-import java.net.URI;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.LinkedHashMap;
@@ -137,7 +136,8 @@ public final class ImageServer implements Interceptor {
         WebsitePreviews.checkHost(url.host());
         List<Proxy> proxies;
         try {
-            proxies = ProxySelector.getDefault().select(URI.create(url.toString()));
+            // As OkHttp's RouteSelector asks: uri() escapes what java.net.URI refuses.
+            proxies = ProxySelector.getDefault().select(url.uri());
         } catch (RuntimeException error) {
             throw new Answer("No route to check: " + url, error);
         }
@@ -223,7 +223,6 @@ public final class ImageServer implements Interceptor {
             throw new IOException("Not a URL: " + link, error);
         }
         checkHop(page.url());
-        long deadline = System.currentTimeMillis() + WebsitePreviews.PAGE_DEADLINE_MS;
         // The client's connect timeout holds: this OkHttp reads only the read timeout from the chain.
         try (Response response = chain.withReadTimeout(PAGE_TIMEOUT_MS, TimeUnit.MILLISECONDS).proceed(page)) {
             if (response.code() != 200) throw new Answer("The page answered " + response.code() + ": " + link);
@@ -231,6 +230,8 @@ public final class ImageServer implements Interceptor {
             ResponseBody body = response.body();
             byte[] head = new byte[0];
             if (WebsitePreviews.isHtml(contentType) && body != null) {
+                // From the answer on, not before: slow DNS or a slow connection is the network's, not the site's.
+                long deadline = System.currentTimeMillis() + WebsitePreviews.PAGE_READ_MS;
                 try (InputStream in = body.byteStream()) {
                     head = WebsitePreviews.readHead(in, WebsitePreviews.MAX_HEAD_BYTES, deadline);
                 }

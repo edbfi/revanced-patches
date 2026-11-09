@@ -25,13 +25,11 @@ public final class WebsitePreviews {
     static final int MAX_HEAD_BYTES = 256 * 1024;
     /** How long a website preview may take to load its page and its image's headers. */
     static final long DEADLINE_MS = 15_000;
-    /** How long reading a page may take, before the watchdog's deadline: a site that slow is remembered. */
-    static final long PAGE_DEADLINE_MS = 10_000;
+    /** How long reading a page may take once it answers: a site that slow is remembered. */
+    static final long PAGE_READ_MS = 5_000;
 
     // The meta tags that name a page's preview image, best first.
     private static final String[] IMAGE_TAGS = {"og:image", "og:image:secure_url", "og:image:url", "twitter:image", "twitter:image:src"};
-    private static final Pattern ATTRIBUTE = Pattern.compile(
-            "([A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
     private static final Pattern ENTITY = Pattern.compile("&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z]{2,6});");
     private static final Map<String, String> NAMED = new HashMap<>();
     private static final Pattern SCHEME = Pattern.compile("[A-Za-z][A-Za-z0-9+.-]*://");
@@ -106,6 +104,44 @@ public final class WebsitePreviews {
         return type.equals("text/html") || type.equals("application/xhtml+xml");
     }
 
+    /**
+     * A tag's attributes, names lowercased, the first of each name kept. Read by hand, not by a pattern, so a hostile
+     * tag (a long name, an unclosed quote) costs no more than its length.
+     */
+    static Map<String, String> attributes(String tag) {
+        Map<String, String> attributes = new HashMap<>();
+        int length = tag.length();
+        int at = 0;
+        while (at < length) {
+            char c = tag.charAt(at);
+            if (Character.isWhitespace(c) || c == '/') {
+                at++;
+                continue;
+            }
+            int nameStart = at;
+            while (at < length && !Character.isWhitespace(tag.charAt(at)) && tag.charAt(at) != '=' && tag.charAt(at) != '/') at++;
+            String name = tag.substring(nameStart, at).toLowerCase(Locale.ROOT);
+            while (at < length && Character.isWhitespace(tag.charAt(at))) at++;
+            String value = "";
+            if (at < length && tag.charAt(at) == '=') {
+                at++;
+                while (at < length && Character.isWhitespace(tag.charAt(at))) at++;
+                if (at < length && (tag.charAt(at) == '"' || tag.charAt(at) == '\'')) {
+                    int close = tag.indexOf(tag.charAt(at), at + 1);
+                    if (close < 0) close = length;
+                    value = tag.substring(at + 1, close);
+                    at = close + 1;
+                } else {
+                    int valueStart = at;
+                    while (at < length && !Character.isWhitespace(tag.charAt(at))) at++;
+                    value = tag.substring(valueStart, at);
+                }
+            }
+            if (!name.isEmpty() && !attributes.containsKey(name)) attributes.put(name, value);
+        }
+        return attributes;
+    }
+
     /** The preview image the page's meta tags name, resolved against the page's URL and made https, or null. */
     static String imageIn(String html, String pageUrl) {
         Map<String, String> found = new HashMap<>();
@@ -122,19 +158,10 @@ public final class WebsitePreviews {
             boolean meta = html.regionMatches(true, start + 1, "meta", 0, 4)
                     && (start + 5 >= html.length() || !Character.isLetterOrDigit(html.charAt(start + 5)));
             if (end < 0 || !meta) continue;
-            String key = null;
-            String content = null;
-            Matcher attribute = ATTRIBUTE.matcher(html.substring(start, end + 1));
-            while (attribute.find()) {
-                String name = attribute.group(1).toLowerCase(Locale.ROOT);
-                String value = attribute.group(2) != null ? attribute.group(2)
-                        : attribute.group(3) != null ? attribute.group(3) : attribute.group(4);
-                if (name.equals("property") || name.equals("name")) {
-                    if (key == null) key = value.trim().toLowerCase(Locale.ROOT);
-                } else if (name.equals("content")) {
-                    content = value;
-                }
-            }
+            Map<String, String> attributes = attributes(html.substring(start + 5, end));
+            String key = attributes.containsKey("property") ? attributes.get("property") : attributes.get("name");
+            if (key != null) key = key.trim().toLowerCase(Locale.ROOT);
+            String content = attributes.get("content");
             // A page may name several images: the first of each kind is the main one.
             if (key != null && content != null && !content.trim().isEmpty() && !found.containsKey(key)) {
                 found.put(key, content);

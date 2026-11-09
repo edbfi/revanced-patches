@@ -10,6 +10,10 @@ public final class HttpUrl {
         throw new UnsupportedOperationException("stub");
     }
 
+    public final java.net.URI uri() {
+        throw new UnsupportedOperationException("stub");
+    }
+
     /** Null when the link isn't a well-formed http or https URL. */
     public final HttpUrl resolve(String link) {
         throw new UnsupportedOperationException("stub");
