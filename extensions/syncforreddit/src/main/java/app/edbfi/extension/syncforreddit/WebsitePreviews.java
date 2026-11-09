@@ -7,9 +7,12 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -32,6 +35,7 @@ public final class WebsitePreviews {
             "([A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
     private static final Pattern ENTITY = Pattern.compile("&(#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z]{2,6});");
     private static final Map<String, String> NAMED = new HashMap<>();
+    private static final Pattern IPV4 = Pattern.compile("[0-9]{1,3}(\\.[0-9]{1,3}){3}");
 
     static {
         NAMED.put("amp", "&");
@@ -60,11 +64,28 @@ public final class WebsitePreviews {
         Page fetch(String link) throws IOException;
     }
 
+    /** Resolves a host name; the image client's own DNS in the app, so its DNS-over-HTTPS setting holds. */
+    interface Lookup {
+        List<InetAddress> lookup(String host) throws IOException;
+    }
+
+    /** A request this refuses: an answer, which the failure cache remembers, unlike a lost connection. */
+    static final class Refused extends IOException {
+        Refused(String why) {
+            super(why);
+        }
+    }
+
     private WebsitePreviews() {}
 
     /** Turned on by the "Enable Sync Ultra" patch. */
     public static boolean isEnabled() {
         return false;
+    }
+
+    /** Whether the link is a website preview's: an https link that isn't Tenor's (Fix Tenor previews handles those). */
+    static boolean isWebsite(String link) {
+        return handles(link) && !Tenor.handles(link);
     }
 
     /** Whether the link is one whose page this fetches: https only, as the app's own check requires. */
@@ -219,6 +240,24 @@ public final class WebsitePreviews {
         }
         if (bytes[0] == 0x20 && bytes[1] == 0x02) return isPublicIpv4(bytes, 2);
         return true;
+    }
+
+    /**
+     * Refuses a host, before anything connects to it, unless every address it has is public. `host` is canonical, as
+     * OkHttp gives it: an address is never looked up, so a name can't stand for one.
+     */
+    static void checkHost(String host, Lookup lookup) throws IOException {
+        if (host == null || host.isEmpty()) throw new Refused("No host");
+        List<InetAddress> addresses;
+        if (host.indexOf(':') >= 0 || IPV4.matcher(host).matches()) {
+            addresses = Collections.singletonList(InetAddress.getByName(host));
+        } else {
+            addresses = lookup.lookup(host);
+        }
+        if (addresses == null || addresses.isEmpty()) throw new UnknownHostException(host);
+        for (InetAddress address : addresses) {
+            if (!isPublic(address)) throw new Refused("Not a public address (" + address + "): " + host);
+        }
     }
 
     private static boolean isPublicIpv4(byte[] bytes, int at) {

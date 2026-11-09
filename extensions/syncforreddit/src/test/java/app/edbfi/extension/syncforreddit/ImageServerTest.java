@@ -144,15 +144,20 @@ public class ImageServerTest {
         WebsitePreviews.Pages offline = link -> {
             throw new IOException("offline");
         };
-        // What the guard throws for a private address or an http hop.
+        // What Guard and the host check throw for a private address, a proxy or an http hop.
         WebsitePreviews.Pages refused = link -> {
-            throw new IOException("Preview refused", new IllegalStateException("Not a public address"));
+            throw new WebsitePreviews.Refused("Not a public address");
+        };
+        // On Android a lost connection's exception holds a platform one, such as GaiException, a RuntimeException.
+        WebsitePreviews.Pages lost = link -> {
+            throw (IOException) new java.net.UnknownHostException("example.org").initCause(new RuntimeException("android_getaddrinfo failed"));
         };
         WebsitePreviews.Pages pdf = link -> new WebsitePreviews.Page(link, "application/pdf", new byte[0]);
         assertTrue(ImageServer.worthRemembering(websiteFailure(preview, bare)));
         assertFalse(ImageServer.worthRemembering(websiteFailure(preview, offline)));
         assertTrue(ImageServer.worthRemembering(websiteFailure(preview, refused)));
         assertTrue(ImageServer.worthRemembering(websiteFailure(preview, pdf)));
+        assertFalse(ImageServer.worthRemembering(websiteFailure(preview, lost)));
     }
 
     private static IOException websiteFailure(String url, WebsitePreviews.Pages pages) {

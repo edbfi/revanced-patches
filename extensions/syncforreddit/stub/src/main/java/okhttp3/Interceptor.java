@@ -13,6 +13,8 @@ public interface Interceptor {
 
         Response proceed(Request request) throws IOException;
 
+        Call call();
+
         /** Null in an application interceptor. */
         Connection connection();
 

@@ -3,6 +3,10 @@ package okhttp3;
 
 /** Compile-only stand-in for the OkHttp client bundled in the app. */
 public class OkHttpClient {
+    public final Dns dns() {
+        throw new UnsupportedOperationException("stub");
+    }
+
     public static class Builder {
         public final Builder addInterceptor(Interceptor interceptor) {
             throw new UnsupportedOperationException("stub");

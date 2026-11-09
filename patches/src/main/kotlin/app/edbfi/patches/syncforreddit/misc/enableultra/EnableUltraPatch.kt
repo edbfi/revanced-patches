@@ -2,6 +2,7 @@
 package app.edbfi.patches.syncforreddit.misc.enableultra
 
 import app.edbfi.patches.shared.Edit
+import app.edbfi.patches.shared.rewriteStrings
 import app.edbfi.patches.syncforreddit.SYNC_PACKAGE
 import app.edbfi.patches.syncforreddit.SYNC_VERSION
 import app.edbfi.patches.syncforreddit.misc.extension.extensionPatch
@@ -22,6 +23,11 @@ import app.revanced.patcher.patch.bytecodePatch
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+
+private const val TRANSLATE_BADGE = "https://todo.syncforreddit.com"
+
+// The image server URL ImageServer answers; it fails the links it doesn't handle on the device.
+private const val IMAGE_SERVER = "https://ap.syncforreddit.com/image?url="
 
 @Suppress("unused")
 val enableUltraPatch =
@@ -64,10 +70,16 @@ val enableUltraPatch =
                 methodIn("UltraManagePaintSelectionBottomSheet.java", "TODO", "Refreshing") to 1,
             ).forEach { (method, count) -> edits += method.callInstead(ultra.isUltra, hasPurchase, count) }
 
+            // Translations end with a "Translated by Google" badge from Sync's server: ImageServer fails it on the device.
+            val badge = methodIn("SyncHtmlToSpannedConverter.java", "$TRANSLATE_BADGE/translate_white.png", "$TRANSLATE_BADGE/translate_grey.png")
+                .rewriteStrings { if (it.startsWith("$TRANSLATE_BADGE/")) IMAGE_SERVER + it.removePrefix("https://") else null }
+            if (badge.count != 2) throw PatchException("Expected two Translate badges, found ${badge.count}")
+            edits += badge
+
             edits += returnUnlessBought(methodIn("UltraManagePreference.java", "getSubscriptionInformationCallable"), hasPurchase)
             edits += showOnlyIfBought(methodIn("PreferencesUltraFragment.java", "ultra_manage_preference", "ultra_cloud"), hasPurchase)
             // Website previews: the app shows them for Ultra, from this URL, which ImageServer answers from the linked page.
-            methodIn("WebsitePreviewHelper.java", "https://ap.syncforreddit.com/image?url=")
+            methodIn("WebsitePreviewHelper.java", IMAGE_SERVER)
             edits += extensionSwitch("WebsitePreviews")
 
             edits.forEach { it.apply() }

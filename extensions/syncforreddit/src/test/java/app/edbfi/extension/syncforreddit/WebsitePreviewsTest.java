@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collections;
 import org.junit.Test;
 
 public class WebsitePreviewsTest {
@@ -145,6 +147,32 @@ public class WebsitePreviewsTest {
         WebsitePreviews.Pages redirected = link -> new WebsitePreviews.Page("https://www.example.org/final/",
                 "text/html", "<meta property=\"og:image\" content=\"card.png\">".getBytes(StandardCharsets.UTF_8));
         assertEquals("https://www.example.org/final/card.png", WebsitePreviews.image("https://example.org/", redirected));
+    }
+
+    @Test
+    public void checksHostsBeforeConnecting() throws IOException {
+        WebsitePreviews.Lookup publicDns = host -> Collections.singletonList(InetAddress.getByName("93.184.215.14"));
+        WebsitePreviews.Lookup rebinding = host -> Arrays.asList(InetAddress.getByName("93.184.215.14"), InetAddress.getByName("10.0.0.1"));
+        WebsitePreviews.Lookup never = host -> {
+            throw new AssertionError("Looked up an address: " + host);
+        };
+        WebsitePreviews.checkHost("example.org", publicDns);
+        WebsitePreviews.checkHost("1.1.1.1", never);
+        for (String host : new String[] {"127.0.0.1", "192.168.1.50", "::1", "fd00::1", ""}) {
+            assertRefused(host, never);
+        }
+        // Every address a name has must be public: OkHttp may connect to any.
+        assertRefused("example.org", rebinding);
+    }
+
+    private static void assertRefused(String host, WebsitePreviews.Lookup lookup) throws IOException {
+        try {
+            WebsitePreviews.checkHost(host, lookup);
+        } catch (WebsitePreviews.Refused expected) {
+            assertTrue(ImageServer.worthRemembering(expected));
+            return;
+        }
+        throw new AssertionError("Expected " + host + " to be refused");
     }
 
     /** Gives at most a few bytes per read, as a network stream may. */
