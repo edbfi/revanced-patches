@@ -7,13 +7,15 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 
 - A patch lives in `patches/src/main/kotlin/app/edbfi/patches/<app>/<area>/<feature>/`: `<Feature>Patch.kt`
   and its method matchers in `Matchers.kt`. `<app>` is a short lowercase app name (`syncforreddit`), `<area>`
-  groups features (`ads`, `api`, `layout`, `misc`). Resources go in `patches/src/main/resources/<app>/<feature>/`;
-  code several apps share goes in `patches/…/patches/shared/`.
+  groups features (`ads`, `api`, `layout`, `misc`). Resources go in
+  `patches/src/main/resources/edbfi/<app>/<feature>/`; code several apps share goes in `patches/…/patches/shared/`.
 - Java that runs inside an app goes in an extension module, `extensions/<app>/`, package
   `app.edbfi.extension.<app>`, with compile-only stubs of the app's classes in its `stub/` subproject. Add it with
-  the first patch that needs it, and keep kotlin-stdlib out of its runtime classpath. Extension modules share
-  `extensions/proguard-rules.pro` and the root's `android.library apply false`; building them needs an Android SDK
-  (`ANDROID_HOME`).
+  the first patch that needs it, name its file `extensions/edbfi/<app>.rve` with the plugin's `extension { name }`,
+  and keep kotlin-stdlib out of its runtime classpath. Extension modules share `extensions/proguard-rules.pro` and
+  the root's `android.library apply false`; building them needs an Android SDK (`ANDROID_HOME`).
+- Every bundle a user loads shares one class loader, so a bundle file another bundle also has can be read in place
+  of ours. Hence the `edbfi` in resource and extension paths; `PatchMetadataTest` checks it.
 - Never commit APKs, bundles, keystores or app code. Samples and patched output go in the ignored `tmp/`.
 
 ## Patches

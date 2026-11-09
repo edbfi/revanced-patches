@@ -24,6 +24,10 @@ Add a patches source with this URL:
 https://github.com/edbfi/revanced-patches/releases/latest/download/patches-bundle.json
 ```
 
+Manager also selects the patches its built-in ReVanced Patches has for the same app, and some of them change the same
+code as ours. Before you patch, turn on Settings → Advanced → **Allow changing patch selection and options**, then in
+**Select patches** untick **ReVanced Patches**.
+
 Manager doesn't verify signatures. To check a bundle, use the CLI.
 
 ### ReVanced CLI

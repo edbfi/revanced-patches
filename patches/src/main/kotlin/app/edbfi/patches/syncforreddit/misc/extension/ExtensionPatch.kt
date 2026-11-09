@@ -7,16 +7,25 @@ import app.revanced.patcher.definingClass
 import app.revanced.patcher.extensions.addInstructions
 import app.revanced.patcher.name
 import app.revanced.patcher.patch.BytecodePatchContext
+import app.revanced.patcher.patch.PatchException
 import app.revanced.patcher.patch.bytecodePatch
 import app.revanced.patcher.returnType
 
 /** The package of the Java the extension adds to the app, as a type descriptor prefix. */
 internal const val EXTENSION = "Lapp/edbfi/extension/syncforreddit"
 
+/** Where the bundle holds the extension, as named in extensions/syncforreddit/build.gradle.kts. */
+private const val EXTENSION_FILE = "extensions/edbfi/syncforreddit.rve"
+
 /** Adds the extension's classes to the app. Patches that call into it depend on this one. */
 internal val extensionPatch =
     bytecodePatch {
-        extendWith("extensions/syncforreddit.rve")
+        extendWith(EXTENSION_FILE)
+        // Some patches call into the extension without looking anything up in it. Should another bundle's file be read
+        // in place of ours, fail here rather than leave those calls pointing at classes the app lacks.
+        apply {
+            if (classDefs["$EXTENSION/Http;"] == null) throw PatchException("$EXTENSION_FILE added no extension classes")
+        }
     }
 
 /**
