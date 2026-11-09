@@ -46,8 +46,9 @@ tasks.test {
     val bundle = tasks.jar.flatMap { it.archiveFile }
     inputs.file(bundle)
     jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Dpatches.bundle=${bundle.get().asFile}") })
-    // ReadmeTest checks the README's app and patch tables and option names against the bundle.
+    // ReadmeTest checks the README's app table, and each app's page in docs/, against the bundle.
     val readme = rootProject.layout.projectDirectory.file("README.md")
     inputs.file(readme)
+    inputs.dir(rootProject.layout.projectDirectory.dir("docs"))
     jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Dreadme.file=${readme.asFile}") })
 }
