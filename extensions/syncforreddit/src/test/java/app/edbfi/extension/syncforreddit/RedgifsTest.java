@@ -145,4 +145,23 @@ public class RedgifsTest {
         DataSource.Factory upstream = () -> null;
         assertSame(upstream, Redgifs.autoplay(upstream));
     }
+
+    @Test
+    public void resolvesAnAutoplayUrl() throws Exception {
+        String body = "{\"gif\":{\"urls\":{\"hd\":\"https://media.redgifs.com/Resolved.mp4\"}}}";
+        assertEquals("https://media.redgifs.com/Resolved.mp4", Redgifs.resolve(AUTOPLAY + "Resolved", answering(200, body, new ArrayList<>())));
+    }
+
+    @Test
+    public void passesALostConnectionOnForThePlayerToRetry() {
+        IOException offline = new IOException("offline");
+        try {
+            Redgifs.resolve(AUTOPLAY + "Offline", id -> {
+                throw offline;
+            });
+            fail("Expected an IOException");
+        } catch (IOException expected) {
+            assertSame(offline, expected);
+        }
+    }
 }

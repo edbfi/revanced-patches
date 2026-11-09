@@ -56,8 +56,9 @@ public final class ImageServer implements Interceptor {
     }
 
     /**
-     * Whether a failure is an answer worth remembering: Imgur or Tenor had nothing to show. A lost connection is
-     * tried again when the preview next shows, and a preview nothing handles costs nothing to fail again.
+     * Whether a failure is an answer worth remembering: Imgur or Tenor had nothing to show, or refused to say (a 429 or
+     * 5xx, which also spares the shared client's quota). A lost connection is tried again when the preview next shows,
+     * and a preview nothing handles costs nothing to fail again.
      */
     static boolean worthRemembering(IOException failure) {
         Throwable cause = failure.getCause();

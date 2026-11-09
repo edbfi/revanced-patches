@@ -126,14 +126,13 @@ public final class Redgifs {
     }
 
     /**
-     * The video to play for a URL the player opens, or null to open it as it is. Other videos the app sends to its
-     * developer's image server fail without asking it. Throws only IOException: a lost
-     * connection as it was, which the player tries again, and an answer without a video as FileNotFoundException,
-     * which it doesn't.
+     * The video to play for a URL the player opens, or null to open it as it is. Throws only IOException: a lost
+     * connection as it was, which the player tries again, and everything else as FileNotFoundException, which it
+     * doesn't. Other videos the app sends to its developer's image server fail without asking it.
      */
     static String resolve(String url, Gifs gifs) throws IOException {
         if (url == null || !url.startsWith(ImageServer.PREFIX)) return null;
-        // Enhanced autoplay's Gfycat videos: Gfycat is gone, and the image server isn't sent links, as in ImageServer.
+        // Enhanced autoplay's other videos, Gfycat's: the image server isn't sent links, as in ImageServer.
         if (!url.startsWith(AUTOPLAY)) throw new FileNotFoundException("Sync's image server is gone: " + url);
         try {
             return video(url, gifs);
