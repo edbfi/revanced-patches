@@ -2,6 +2,7 @@
 package okhttp3;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 /** Compile-only stand-in for the OkHttp 5 interceptor bundled in the app. */
 public interface Interceptor {
@@ -11,5 +12,12 @@ public interface Interceptor {
         Request request();
 
         Response proceed(Request request) throws IOException;
+
+        Call call();
+
+        /** Null in an application interceptor. */
+        Connection connection();
+
+        Chain withReadTimeout(int timeout, TimeUnit unit);
     }
 }

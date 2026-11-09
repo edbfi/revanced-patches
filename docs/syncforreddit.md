@@ -15,6 +15,7 @@ Patches for Sync for Reddit. To install them, see the [README](../README.md#inst
 | Spoof client | Restores login and browsing by using another app's Reddit OAuth client. | On |
 | Disable ads | Removes ads and the ad consent form, and keeps the ad SDKs from starting. | On |
 | Disable Sync for Lemmy bottom sheet | Removes the Sync for Lemmy promotion that shows at every start. | On |
+| Enable Sync Ultra | Enables the Sync Ultra features that work without Sync's servers, and loads website previews on the device. | On |
 | Fix /s/ links | Opens Reddit share links (/s/) as the post they point to, from the app and from other apps. | On |
 | Fix Redgifs | Fixes Redgifs videos not loading, Enhanced autoplay's included. | On |
 | Fix Tenor previews | Fixes previews of Tenor links in comments and posts staying blank. | On |
@@ -38,6 +39,17 @@ Patches for Sync for Reddit. To install them, see the [README](../README.md#inst
 
 ## Known issues
 
-- **Website previews in comments and posts stay blank.** They came from Sync's own image server, which refuses links
-  it hasn't cached. Without Sync Ultra, Sync never showed them.
+- **Website previews make your phone load every linked page they show.** With Enable Sync Ultra, the phone reads the
+  preview image a page names for itself (`og:image`), so each linked site sees your IP address when a link scrolls into
+  view, much as if you opened it. Before, Sync's server read the pages, so sites never saw your phone. To stop it, turn
+  off Website previews in Sync Ultra's settings.
+- **Website previews stay blank behind a proxy.** A proxy could reach addresses on your own network, which previews must
+  never load.
+- **Translations have no "Translated by Google" badge.** It was an image on Sync's server.
+- **Paints and tags stay on the device: Paint users' Force refresh does nothing, and Clear all only says "TODO".**
+  Ultra synced them, and cleared them, through Sync's servers, which only serve accounts that bought Ultra. Remove them
+  one at a time.
+- **Settings cloud backup is gone.** It kept backups on Sync's servers. The app's local backup still works.
+- **Restore comment is gone.** It read removed comments from Pushshift, which no longer serves apps.
+- **Translate and Select text from images need Google Play services.** They run Google's ML Kit on the device.
 - **"Other discussions" can miss a post of the same link, or show a post of a different one.** It searches Reddit for the link.
