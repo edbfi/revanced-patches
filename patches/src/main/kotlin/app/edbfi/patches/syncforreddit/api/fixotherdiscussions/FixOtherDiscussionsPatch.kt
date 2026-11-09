@@ -26,7 +26,7 @@ val fixOtherDiscussionsPatch =
             // parser reads as it is. The listing keeps its "Other discussions" key and title.
             val method = postsUrlMethod()
             if (method.instructions.first().location.labels.isNotEmpty()) throw PatchException("${method.name} starts at a label")
-            // The keys are p1 and p2, above v15 here: only the range form reaches them.
+            // The keys are p1 and p2, which may be above v15: only the range form reaches those.
             method.addInstructions(
                 0,
                 """

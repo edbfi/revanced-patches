@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 package app.edbfi.extension.syncforreddit;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
@@ -22,8 +23,24 @@ public class OtherDiscussionsTest {
     }
 
     @Test
+    public void makesASearchKeyWithNoSubreddit() {
+        // The app reads a search key as search###<subreddit>###<query>.
+        assertArrayEquals(
+                new String[] {"search", "", "url:https%3A%2F%2Fexample.com%2F"},
+                OtherDiscussions.asSearch("seen###https%3A%2F%2Fexample.com%2F").split("###"));
+    }
+
+    @Test
+    public void passesEscapesThroughUntouched() {
+        // URLEncoder output: a fragment (%23), a literal plus (%2B), a percent sign (%25) and a space (+).
+        String link = "https%3A%2F%2Fexample.com%2Fa%2Bb%3Fq%3D50%25+off%23top";
+        assertEquals("search######url:" + link, OtherDiscussions.asSearch("seen###" + link));
+    }
+
+    @Test
     public void leavesOtherListingsAlone() {
         assertEquals("frontpage", OtherDiscussions.asSearch("frontpage"));
+        assertEquals("seen", OtherDiscussions.asSearch("seen"));
         assertEquals("search###pics###cats", OtherDiscussions.asSearch("search###pics###cats"));
         assertEquals("r/seen###x", OtherDiscussions.asSearch("r/seen###x"));
         assertEquals("seen###", OtherDiscussions.asSearch("seen###"));
