@@ -46,6 +46,9 @@ public class WebsitePreviewsTest {
     public void readsAHostilePageInLinearTime() {
         String unclosed = "<meta ".repeat(43_690);
         assertNull(WebsitePreviews.imageIn(unclosed, PAGE));
+        // Lowercasing "İ" makes two characters: indexes must come from the page itself.
+        assertEquals("https://x.org/a.png", WebsitePreviews.imageIn(
+                "<title>İİİİ</title><META property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
         assertNull(WebsitePreviews.imageIn("<metadata property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
         assertEquals("https://x.org/a.png", WebsitePreviews.imageIn(
                 "<meta>".repeat(40_000) + "<meta/property=\"og:image\" content=\"https://x.org/a.png\">", PAGE));
@@ -189,7 +192,7 @@ public class WebsitePreviewsTest {
         WebsitePreviews.checkHost("notsyncforreddit.com");
         // OkHttp connects to any host of digits and dots without looking it up: 127.1 and 2130706433 are 127.0.0.1.
         for (String host : new String[] {"127.0.0.1", "192.168.1.50", "::1", "fd00::1", "", "127.1", "10.1", "2130706433",
-            "127.0.0.0001", "300.1.1.1", "syncforreddit.com", "ap.syncforreddit.com", "AP.SyncForReddit.com."}) {
+            "127.0.0.0001", "300.1.1.1", "012.0.0.1", "syncforreddit.com", "ap.syncforreddit.com", "AP.SyncForReddit.com."}) {
             try {
                 WebsitePreviews.checkHost(host);
             } catch (ImageServer.Answer expected) {

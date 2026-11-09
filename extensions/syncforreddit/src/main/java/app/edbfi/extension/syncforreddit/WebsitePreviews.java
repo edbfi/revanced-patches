@@ -106,12 +106,13 @@ public final class WebsitePreviews {
     /** The preview image the page's meta tags name, resolved against the page's URL and made https, or null. */
     static String imageIn(String html, String pageUrl) {
         Map<String, String> found = new HashMap<>();
-        // Found by hand, not by a pattern: a page of unclosed "<meta " would make one rescan the rest for each.
-        String lower = html.toLowerCase(Locale.ROOT);
-        for (int start = lower.indexOf("<meta"); start >= 0; start = lower.indexOf("<meta", start + 1)) {
+        // Found by hand, not by a pattern: a page of unclosed "<meta " would make one rescan the rest for each. Matched
+        // in the page itself: lowercasing can change its length ("İ"), and with it every index.
+        for (int start = html.indexOf('<'); start >= 0; start = html.indexOf('<', start + 1)) {
+            if (!html.regionMatches(true, start + 1, "meta", 0, 4)) continue;
             int after = start + 5;
-            if (after < lower.length() && Character.isLetterOrDigit(lower.charAt(after))) continue;
-            int end = lower.indexOf('>', after);
+            if (after < html.length() && Character.isLetterOrDigit(html.charAt(after))) continue;
+            int end = html.indexOf('>', after);
             if (end < 0) break;
             String key = null;
             String content = null;
@@ -271,7 +272,8 @@ public final class WebsitePreviews {
         if (parts.length != 4) return null;
         byte[] bytes = new byte[4];
         for (int i = 0; i < 4; i++) {
-            if (parts[i].isEmpty() || parts[i].length() > 3) return null;
+            // A leading zero may make it octal (012 is 10) to the system's parser.
+            if (parts[i].isEmpty() || parts[i].length() > 3 || (parts[i].length() > 1 && parts[i].charAt(0) == '0')) return null;
             int part = Integer.parseInt(parts[i]);
             if (part > 255) return null;
             bytes[i] = (byte) part;
