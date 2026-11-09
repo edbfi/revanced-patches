@@ -16,14 +16,17 @@ val disableAdsPatch =
 
         apply {
             // Every ad path checks this method: SDK setup, banners, feed and gallery ads, and the consent form.
-            adsEnabledMethod().addInstructions(
+            val adsEnabled = adsEnabledMethod()
+            // The provider's attachInfo does nothing but start the SDK; it never calls the ContentProvider's own.
+            val adsInitProvider = adsInitProviderMethod()
+
+            adsEnabled.addInstructions(
                 0,
                 """
                     const/4 v0, 0x0
                     return v0
                 """,
             )
-            // The provider's attachInfo does nothing but start the SDK; it never calls the ContentProvider's own.
-            adsInitProviderMethod().addInstructions(0, "return-void")
+            adsInitProvider.addInstructions(0, "return-void")
         }
     }

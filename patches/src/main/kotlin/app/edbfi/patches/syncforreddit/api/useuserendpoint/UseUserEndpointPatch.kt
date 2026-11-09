@@ -40,9 +40,9 @@ val useUserEndpointPatch =
                 classDefs.methodsByString["/about.json"].orEmpty().filter {
                     classDefs[it.definingClass]?.sourceFile in USER_REQUESTS
                 }
-            val rewritten = methods.sumOf { method -> firstMethod(method).rewriteStrings { USER_PREFIXES[it] } }
-            if (rewritten != EXPECTED_REWRITES) {
-                throw PatchException("Expected $EXPECTED_REWRITES /u/ URLs, rewrote $rewritten")
-            }
+            val edits = methods.map { method -> firstMethod(method).rewriteStrings { USER_PREFIXES[it] } }
+            val found = edits.sumOf { it.count }
+            if (found != EXPECTED_REWRITES) throw PatchException("Expected $EXPECTED_REWRITES /u/ URLs, found $found")
+            edits.forEach { it.apply() }
         }
     }

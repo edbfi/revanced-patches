@@ -27,7 +27,9 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
   exists, and say so in a comment.
 - More than a few injected instructions belong in extension Java; the smali only calls into it.
 - Fail at patch time: throw `PatchException` when a match is missing or ambiguous rather than risk a
-  `VerifyError` in the app.
+  `VerifyError` in the app. Look up and check everything a patch needs before its first change: the patcher keeps
+  a failed patch's changes, and the CLI still writes the APK. A shared hook patch must leave the app no worse until a
+  feature turns it on.
 - Helpers are `internal`; only patches are public.
 
 ## Commands
