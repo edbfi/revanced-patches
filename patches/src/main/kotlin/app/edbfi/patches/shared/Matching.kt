@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 package app.edbfi.patches.shared
 
 import app.revanced.com.android.tools.smali.dexlib2.mutable.MutableMethod

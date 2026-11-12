@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Patches call extension code from smali by name, so R8 must keep it all as written. The generated R class is unused.
 -keep class !**.R, !**.R$*, app.edbfi.extension.** { *; }
 -dontobfuscate

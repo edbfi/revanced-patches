@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/revanced-patches.svg" alt="revanced-patches logo" width="256" height="256">
+  <img src="assets/revanced-patches.svg" alt="revanced-patches logo" width="160" height="160">
 </p>
 <h1 align="center">revanced-patches</h1>
 <p align="center"><strong>Signed ReVanced patches for Android apps.</strong></p>
 <p align="center">
   <a href="https://github.com/edbfi/revanced-patches/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat" alt="License: AGPL-3.0-only">
+    <img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat" alt="License: AGPL-3.0-or-later">
   </a>
   <a href="https://github.com/JetBrains/kotlin" title="Kotlin source">
     <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=flat&amp;logo=kotlin&amp;logoColor=white" alt="Kotlin">
@@ -72,4 +72,8 @@ Build commands, patch rules and commit conventions are in [AGENTS.md](AGENTS.md)
 
 ## License
 
-[AGPL-3.0-only](LICENSE).
+Original code and artwork by edbfi are licensed under the [GNU Affero General Public License](LICENSE),
+version 3 or (at your option) any later version (`AGPL-3.0-or-later`).
+
+The vendored [REA skill](.agents/skills/reverse-engineer-anything.LICENSE) remains MIT-licensed. The Gradle
+wrapper remains Apache-2.0-licensed, and dependencies retain their respective licenses.

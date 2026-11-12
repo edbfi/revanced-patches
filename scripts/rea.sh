@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Runs rea from the main checkout's .rea/install (just setup-rea), shared by every worktree, with this repo's tool
 # paths. With no arguments it starts the MCP server (as .mcp.json, .codex/config.toml and
 # opencode.json do); otherwise it runs a rea CLI command, e.g. `scripts/rea.sh doctor`.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 package app.edbfi.patches.syncforreddit.layout.disablelemmysheet
 
 import app.edbfi.patches.syncforreddit.SYNC_PACKAGE

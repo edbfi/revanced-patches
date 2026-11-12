@@ -88,7 +88,7 @@ CI comes from [edbfi-ci](https://github.com/edbfi/edbfi-ci); its rules apply her
 
 - Conventional Commits scoped by app (`feat(syncforreddit): …`) or by area (`ci`, `rea`), with a DCO sign-off
   (`git commit -s`), through a PR.
-- New source files carry `SPDX-License-Identifier: AGPL-3.0-only`. Other patch repos are reference only: nothing
+- New source files carry `SPDX-License-Identifier: AGPL-3.0-or-later`. Other patch repos are reference only: nothing
   is copied from them.
 - The bundle has one [SemVer](https://semver.org/) version. Release by publishing a GitHub release from main
   tagged `vX.Y.Z`; `release.yml` builds, signs and attaches the assets. Never move, delete or reuse a tag; fix a

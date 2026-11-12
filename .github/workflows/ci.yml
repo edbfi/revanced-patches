@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # From edbfi-ci templates/ci-special.yml, plus the Gradle build. Every added PR job belongs in ci-ok.
 # No paths: filter: a skipped workflow leaves the required checks pending.
 name: CI

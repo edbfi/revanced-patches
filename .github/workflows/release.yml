@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Release automation, after game-mods' release.yml. Publish a GitHub release from main tagged
 # vX.Y.Z. Then:
 #   verify   (unprivileged) the tag is vX.Y.Z, points at the released commit, and that is on main;
