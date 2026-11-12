@@ -1,6 +1,28 @@
-# edbfi ReVanced patches
+<p align="center">
+  <img src="assets/revanced-patches.svg" alt="revanced-patches logo" width="256" height="256">
+</p>
+<h1 align="center">revanced-patches</h1>
+<p align="center"><strong>Signed ReVanced patches for Android apps.</strong></p>
+<p align="center">
+  <a href="https://github.com/edbfi/revanced-patches/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat" alt="License: AGPL-3.0-only">
+  </a>
+  <a href="https://github.com/JetBrains/kotlin" title="Kotlin source">
+    <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=flat&amp;logo=kotlin&amp;logoColor=white" alt="Kotlin">
+  </a>
+  <a href="https://github.com/ReVanced/revanced-patcher" title="ReVanced Patcher framework source">
+    <img src="https://img.shields.io/badge/ReVanced-0076FF?style=flat" alt="ReVanced">
+  </a>
+  <a href="https://android.googlesource.com/platform/manifest" title="Android Open Source Project source manifest">
+    <img src="https://img.shields.io/badge/Android-3DDC84?style=flat&amp;logo=android&amp;logoColor=black" alt="Android">
+  </a>
+</p>
 
-[![CI](https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml)
+<p align="center">
+  <a href="https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml">
+    <img src="https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI">
+  </a>
+</p>
 
 [ReVanced](https://revanced.app) patches for Android apps, in one signed bundle.
 
