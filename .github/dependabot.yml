@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # From edbfi-ci templates/dependabot.special.yml, plus Gradle. rea (.rea/) is bumped by hand with
 # its vendored skill, so it has no entry here.
 version: 2

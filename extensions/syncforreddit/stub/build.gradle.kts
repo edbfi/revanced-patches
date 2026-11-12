@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Compile-only stand-ins for the app's classes the extension calls.
 plugins {
     id("com.android.library")

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 package app.edbfi.patches.syncforreddit.misc.imageclient
 
 import app.edbfi.patches.syncforreddit.misc.extension.EXTENSION

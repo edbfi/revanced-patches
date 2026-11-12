@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 package app.edbfi.extension.syncforreddit;
 
 /** Reddit escapes {@code &} as {@code &amp;} in listing thumbnail URLs, which then answer 403. */

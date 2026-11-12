@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation
 
 plugins {
@@ -15,7 +15,7 @@ patches {
         author = "edbfi"
         contact = "https://github.com/edbfi/revanced-patches/issues"
         website = "https://github.com/edbfi/revanced-patches"
-        license = "GNU Affero General Public License v3.0"
+        license = "AGPL-3.0-or-later"
     }
 }
 
