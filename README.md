@@ -16,13 +16,9 @@
   <a href="https://android.googlesource.com/platform/manifest" title="Android Open Source Project source manifest">
     <img src="https://img.shields.io/badge/Android-3DDC84?style=flat&amp;logo=android&amp;logoColor=black" alt="Android">
   </a>
+  <a href="https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/edbfi/revanced-patches/ci.yml?branch=main&amp;event=push&amp;label=CI&amp;style=flat" alt="CI"></a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml">
-    <img src="https://github.com/edbfi/revanced-patches/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI">
-  </a>
-</p>
 
 [ReVanced](https://revanced.app) patches for Android apps, in one signed bundle.
 
