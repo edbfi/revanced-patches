@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<resources>
+    <string name="disable_ads">Disable ads</string>
+    <string name="disable_ads_description">Removes ads and the ad consent form, and keeps the ad SDKs from starting.</string>
+    <string name="fix_share_links">Fix /s/ links</string>
+    <string name="fix_share_links_description">Opens Reddit share links (/s/) as the post they point to, from the app and from other apps.</string>
+    <string name="fix_galleries">Fix galleries</string>
+    <string name="fix_galleries_description">Restores Reddit gallery and inline video lookup and uses available previews for failed gallery images.</string>
+    <string name="fix_imgur">Fix Imgur</string>
+    <string name="fix_imgur_description">Loads Imgur albums and covers through the Imgur API and opens titled album links.</string>
+    <string name="fix_load_more_comments">Fix load more comments</string>
+    <string name="fix_load_more_comments_description">Fixes \"load more comments\" not loading further comments.</string>
+    <string name="fix_markdown_links">Fix markdown links</string>
+    <string name="fix_markdown_links_description">Shows markdown links that Reddit leaves as raw text, such as links to u/name, as links.</string>
+    <string name="fix_media_links">Fix media links</string>
+    <string name="fix_media_links_description">Opens reddit.com/media links as the Reddit-hosted image they wrap.</string>
+    <string name="fix_youtube_player">Fix YouTube player</string>
+    <string name="fix_youtube_player_description">Fixes the built-in YouTube player, which showed a black screen and error code 0.</string>
+    <string name="keep_typed_text_in_view">Keep typed text in view</string>
+    <string name="keep_typed_text_in_view_description">Keeps the line being typed in view when writing a long reply.</string>
+    <string name="imgur_client_id">Imgur client ID</string>
+    <string name="imgur_client_id_description">Overrides the Imgur registration bundled with this app. Use a client ID you are authorized to use.</string>
+</resources>
